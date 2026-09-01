@@ -99,12 +99,24 @@ class CommunicationProviderAPDS(models.Model):
 		)
 
 	def send_document(self, log):
-		"""APDS działa wyłącznie w kierunku importu (APDS_projekt.md,
-		sekcja 2: provider ALIAS pobiera dane, nie wysyła)."""
-		raise NotImplementedError(
-			"communication.provider.apds nie obsługuje wysyłki - provider "
-			"działa wyłącznie w kierunku import."
+		"""
+		Minimalny adapter wymagany przez core (wzorzec: send_document w
+		communication_provider_ksef.py).
+
+		APDS działa wyłącznie w kierunku importu - nie ma tu dosłownej
+		"wysyłki". Metoda istnieje, żeby generyczny przycisk formularza
+		action_send_manual (hfb_xmlmap_exporter/communication_log.py)
+		działał również dla rekordów direction='import' - deleguje
+		manualne wywołanie do centralnego dyspozytora etapów APDS dla
+		JEDNEGO rekordu.
+		"""
+		self.ensure_one()
+		_logger.info(
+			"[APDS] send_document(manual) log=%s -> _cron_apds_process",
+			log.id,
 		)
+		self.env["communication.log"]._cron_apds_process(log_ids=[log.id])
+		return True
 
 	def get_status(self, log):
 		"""Nieustalone, czy APDS potrzebuje sprawdzania statusu dokumentu

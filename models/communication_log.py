@@ -35,7 +35,8 @@ metod providera w communication_provider_apds.py, obecnie również
 szkieletowych.
 """
 from odoo import fields, models
-
+import logging
+_logger = logging.getLogger(__name__)
 
 class CommunicationLog(models.Model):
 	_inherit = "communication.log"
@@ -140,7 +141,7 @@ class CommunicationLog(models.Model):
 	#				  └── process  → _apds_stage_process()
 	#
 	# ------------------------------------------------------------------
-	def _cron_apds_process(self):
+	def _cron_apds_process(self, log_ids=None):
 		"""
 		Przetwarza aktywne przebiegi APDS zapisane w communication.log.
 
@@ -156,15 +157,17 @@ class CommunicationLog(models.Model):
 			- communication_provider_apds_stage_prepare.py
 			- communication_provider_apds_stage_process.py
 		"""
-		logs = self.search([
+
+		domain = [
 			("provider_id.provider_type", "=", "apds"),
 			("apds_result", "=", "pending"),
-			("apds_stage", "in", [
-				"download",
-				"prepare",
-				"process",
-			]),
-		])
+			("apds_stage", "in", ["download", "prepare", "process"]),
+		]
+
+		if log_ids:
+			domain.append(("id", "in", log_ids))
+
+		logs = self.search(domain)
 
 		for log in logs:
 			try:

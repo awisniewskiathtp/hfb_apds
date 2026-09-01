@@ -41,9 +41,8 @@ from odoo.exceptions import UserError, ValidationError
 import logging
 _logger = logging.getLogger(__name__)
 
-class CommunicationProviderAPDSStageDownload(models.AbstractModel):
-	_name = "communication.provider.apds.stage.download"
-	_description = "APDS - Etap 1 - Pobranie pliku"
+class CommunicationLogE1(models.Model):
+	_inherit = "communication.log"
 
 	def _apds_stage_download(self, log):
 		"""

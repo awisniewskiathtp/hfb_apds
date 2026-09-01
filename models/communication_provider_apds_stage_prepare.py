@@ -41,58 +41,57 @@ from odoo.exceptions import UserError, ValidationError
 import logging
 _logger = logging.getLogger(__name__)
 
-class CommunicationProviderAPDSStagePrepare(models.AbstractModel):
-    _name = "communication.provider.apds.stage.prepare"
-    _description = "APDS - Etap 2 - Przygotowanie danych"
+class CommunicationLogE2(models.Model):
+	_inherit = "communication.log"
 
-    def _apds_stage_prepare(self, log):
-        """
-        Etap 2 procesu APDS — przygotowanie danych do przetwarzania.
+	def _apds_stage_prepare(self, log):
+		"""
+		Etap 2 procesu APDS — przygotowanie danych do przetwarzania.
 
-        Odpowiada za techniczne przygotowanie pobranego pliku źródłowego
-        do późniejszego przetwarzania przez workerów Etapu 3.
+		Odpowiada za techniczne przygotowanie pobranego pliku źródłowego
+		do późniejszego przetwarzania przez workerów Etapu 3.
 
-        Etap obejmuje docelowo:
-            - rozpakowanie archiwum 7z,
-            - streamingowy odczyt JSON,
-            - rozwiązanie mapowania,
-            - kontrolę danych,
-            - zapis przygotowanych rekordów do stagingu PostgreSQL.
+		Etap obejmuje docelowo:
+			- rozpakowanie archiwum 7z,
+			- streamingowy odczyt JSON,
+			- rozwiązanie mapowania,
+			- kontrolę danych,
+			- zapis przygotowanych rekordów do stagingu PostgreSQL.
 
-        Nie wykonuje synchronizacji produktów w Odoo.
-        """
+		Nie wykonuje synchronizacji produktów w Odoo.
+		"""
 
-        provider = log.provider_id
-        config = provider._get_plugin_record()
+		provider = log.provider_id
+		config = provider._get_plugin_record()
 
-        if not config:
-            raise ValueError(
-                "Nie znaleziono konfiguracji providera APDS "
-                f"dla communication.log id={log.id}."
-            )
+		if not config:
+			raise ValueError(
+				"Nie znaleziono konfiguracji providera APDS "
+				f"dla communication.log id={log.id}."
+			)
 
-        _logger.info(
-            "[APDS] Rozpoczęcie Etapu 2 - przygotowanie danych, log_id=%s",
-            log.id,
-        )
+		_logger.info(
+			"[APDS] Rozpoczęcie Etapu 2 - przygotowanie danych, log_id=%s",
+			log.id,
+		)
 
-        # TODO:
-        # 1. Odczyt pobranego pliku źródłowego.
-        # 2. Rozpakowanie archiwum 7z.
-        # 3. Streamingowy odczyt JSON.
-        # 4. Rozwiązanie mapowania danych.
-        # 5. Walidacja rekordów.
-        # 6. Załadowanie danych do hfb_apds_staging_line
-        #    z wykorzystaniem PostgreSQL COPY.
-        # 7. Ustalenie rodzaju synchronizacji (full/diff).
-        # 8. Przygotowanie danych dla Etapu 3.
-        #
-        # Właściwa implementacja zostanie dodana po zamknięciu
-        # kontraktu danych źródłowych i mapowania.
+		# TODO:
+		# 1. Odczyt pobranego pliku źródłowego.
+		# 2. Rozpakowanie archiwum 7z.
+		# 3. Streamingowy odczyt JSON.
+		# 4. Rozwiązanie mapowania danych.
+		# 5. Walidacja rekordów.
+		# 6. Załadowanie danych do hfb_apds_staging_line
+		#	z wykorzystaniem PostgreSQL COPY.
+		# 7. Ustalenie rodzaju synchronizacji (full/diff).
+		# 8. Przygotowanie danych dla Etapu 3.
+		#
+		# Właściwa implementacja zostanie dodana po zamknięciu
+		# kontraktu danych źródłowych i mapowania.
 
-        raise NotImplementedError(
-            "Etap 2 APDS - przygotowanie danych nie został "
-            "jeszcze zaimplementowany."
-        )
+		raise NotImplementedError(
+			"Etap 2 APDS - przygotowanie danych nie został "
+			"jeszcze zaimplementowany."
+		)
 
 #EoF
