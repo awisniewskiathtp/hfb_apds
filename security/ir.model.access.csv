@@ -1,0 +1,5 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_communication_provider_apds_user,communication.provider.apds.user,model_communication_provider_apds,base.group_user,1,0,0,0
+access_communication_provider_apds_manager,communication.provider.apds.manager,model_communication_provider_apds,base.group_system,1,1,1,1
+access_apds_staging_line_user,apds.staging.line.user,model_apds_staging_line,base.group_user,1,0,0,0
+access_apds_staging_line_manager,apds.staging.line.manager,model_apds_staging_line,base.group_system,1,1,1,1

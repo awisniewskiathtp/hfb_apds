@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+
+    <!-- MENU -->
+    <menuitem id="menu_communication_provider_apds"
+              name="Provider APDS"
+              parent="hfb_xmlmap_exporter.menu_communication_provider"
+              action="action_communication_provider_apds"
+			  groups="base.group_system"
+              sequence="30"/>
+
+</odoo>

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+	<!-- ==============================================================
+		 WIDOK FORMULARZA (FORM)
+		 ============================================================== -->
+	<record id="hfb_apds_view_communication_provider_form" model="ir.ui.view">
+		<field name="model">communication.provider</field>
+		<field name="inherit_id" ref="hfb_xmlmap_exporter.view_communication_provider_form"/>
+		<field name="arch" type="xml">
+
+			<xpath expr="//sheet/group" position="inside">
+                <group string="APDS" invisible="provider_type != 'apds'">
+                        <field name="trigger_type"/>
+                </group>
+
+			</xpath>
+
+		</field>
+	</record>
+
+</odoo>

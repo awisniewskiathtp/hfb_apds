@@ -1,0 +1,329 @@
+<div class="container">
+<meta charset="utf-8">
+
+<section class="oe_container">
+    <div class="oe_row oe_spaced">
+        <div class="oe_span12">
+            <h2 class="oe_slogan">ALIAS Product Data Synchronization</h2>
+            <h3 class="oe_slogan">
+                Synchronizacja danych produktów pomiędzy zewnętrznym źródłem a Odoo
+            </h3>
+        </div>
+    </div>
+</section>
+
+<section class="oe_container">
+    <div class="oe_row oe_spaced">
+        <div class="oe_span12">
+            <p class="oe_mt32">
+                <strong>APDS</strong> to moduł Odoo przeznaczony do kontrolowanej
+                synchronizacji dużych zbiorów danych produktów dostarczanych
+                przez zewnętrzne źródło.
+            </p>
+
+
+        <p>
+            Dane źródłowe są traktowane jako <strong>master data</strong>.
+            APDS pobiera je z wykorzystaniem dedykowanego providera,
+            przygotowuje do przetwarzania, kontroluje ich poprawność
+            i synchronizuje dane produktów w Odoo.
+        </p>
+    </div>
+</div>
+
+
+</section>
+
+<section class="oe_container oe_dark">
+    <div class="oe_row oe_spaced">
+        <div class="oe_span12">
+            <h3>Kontrolowany proces synchronizacji</h3>
+
+
+        <p>
+            APDS rozdziela pobranie danych od ich zastosowania w Odoo.
+            Pobrany plik nie staje się automatycznie nowym stanem danych.
+        </p>
+
+        <div class="oe_row oe_spaced">
+            <div class="oe_span4">
+                <h4>1. Pobranie</h4>
+                <p>
+                    Dane są pobierane ze źródła SFTP i rejestrowane
+                    jako konkretny przebieg procesu.
+                </p>
+            </div>
+
+            <div class="oe_span4">
+                <h4>2. Przygotowanie</h4>
+                <p>
+                    Plik jest rozpakowywany, analizowany i przygotowywany
+                    do wydajnego przetwarzania.
+                </p>
+            </div>
+
+            <div class="oe_span4">
+                <h4>3. Przetwarzanie</h4>
+                <p>
+                    Przygotowane dane są synchronizowane z produktami
+                    w Odoo w kontrolowanych partiach.
+                </p>
+            </div>
+        </div>
+
+        <p>
+            Dopiero poprawnie zakończony proces może zostać uznany
+            za nowy stan referencyjny danych.
+        </p>
+    </div>
+</div>
+
+
+</section>
+
+<section class="oe_container">
+    <div class="oe_row oe_spaced">
+        <div class="oe_span12">
+            <h3>Pełna i różnicowa synchronizacja</h3>
+
+
+        <p>
+            Źródło udostępnia ten sam plik, którego zawartość może
+            reprezentować pełny stan danych albo zestaw zmian.
+            APDS rozpoznaje rodzaj danych dla konkretnego przebiegu.
+        </p>
+
+        <div class="oe_row oe_spaced">
+            <div class="oe_span6">
+                <h4>Synchronizacja pełna</h4>
+                <p>
+                    Pełny zbiór danych służy do okresowej synchronizacji
+                    oraz kontroli zgodności stanu produktów w Odoo
+                    ze stanem źródłowym.
+                </p>
+            </div>
+
+            <div class="oe_span6">
+                <h4>Synchronizacja różnicowa</h4>
+                <p>
+                    Dane dotyczące zmian pozwalają ograniczyć zakres
+                    przetwarzania pomiędzy kolejnymi pełnymi synchronizacjami.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+</section>
+
+<section class="oe_container oe_dark">
+    <div class="oe_row oe_spaced">
+        <div class="oe_span12">
+            <h3>Przystosowany do dużych zbiorów danych</h3>
+
+
+        <p>
+            APDS jest projektowany z myślą o źródłach zawierających
+            miliony rekordów produktów. Przy takiej skali standardowe
+            przetwarzanie rekord po rekordzie za pomocą ORM Odoo
+            nie jest właściwym rozwiązaniem.
+        </p>
+
+        <p>
+            Dane są przygotowywane w technicznej tabeli stagingowej,
+            a właściwe przetwarzanie odbywa się partiami.
+        </p>
+
+        <ul>
+            <li>strumieniowe odczytywanie dużego pliku JSON,</li>
+            <li>wydajne ładowanie danych do PostgreSQL,</li>
+            <li>przetwarzanie w niezależnych partiach,</li>
+            <li>równoległa praca workerów,</li>
+            <li>mechanizm rezerwacji partii chroniący przed równoległym przetwarzaniem tych samych rekordów.</li>
+        </ul>
+    </div>
+</div>
+
+
+</section>
+
+<section class="oe_container">
+    <div class="oe_row oe_spaced">
+        <div class="oe_span4">
+            <h4>Bezpieczne przetwarzanie</h4>
+            <p>
+                Błąd pojedynczego rekordu nie musi zatrzymywać całej
+                synchronizacji. Błędy infrastrukturalne mogą natomiast
+                spowodować wycofanie bieżącej partii i jej ponowienie.
+            </p>
+        </div>
+
+
+    <div class="oe_span4">
+        <h4>Wznowienie</h4>
+        <p>
+            Proces może być kontynuowany po awarii bez konieczności
+            rozpoczynania całej synchronizacji od początku.
+        </p>
+    </div>
+
+    <div class="oe_span4">
+        <h4>Idempotencja</h4>
+        <p>
+            Mechanizm przetwarzania jest projektowany tak, aby
+            ponowne zastosowanie tego samego rekordu prowadziło
+            do tego samego stanu danych.
+        </p>
+    </div>
+</div>
+
+
+</section>
+
+<section class="oe_container oe_dark">
+    <div class="oe_row oe_spaced">
+        <div class="oe_span12">
+            <h3>Kontrola jakości danych</h3>
+
+
+        <p>
+            APDS nie zakłada, że każdy pobrany plik może zostać
+            bezpośrednio zastosowany w Odoo.
+        </p>
+
+        <ul>
+            <li>kontrola kompletności pobrania,</li>
+            <li>kontrola poprawności archiwum i JSON,</li>
+            <li>kontrola zgodności ze znaną strukturą danych,</li>
+            <li>obsługa błędów pojedynczych produktów,</li>
+            <li>kontrola wyniku synchronizacji jako całości.</li>
+        </ul>
+
+        <p>
+            Szczególne znaczenie ma kontrola podejrzanie dużego
+            odsetka wyzerowanych stanów magazynowych. Pozwala ona
+            wykryć sytuację, w której poprawny technicznie plik
+            może zawierać nieoczekiwane dane biznesowe.
+        </p>
+    </div>
+</div>
+
+
+</section>
+
+<section class="oe_container">
+    <div class="oe_row oe_spaced">
+        <div class="oe_span12">
+            <h3>Integracja z XET Base</h3>
+
+
+        <p>
+            APDS wykorzystuje mechanizmy komunikacyjne
+            <strong>XET Base</strong>, zachowując rozdział pomiędzy
+            warstwą komunikacji a procesem biznesowym synchronizacji.
+        </p>
+
+        <p>
+            Provider odpowiada za komunikację ze źródłem danych,
+            natomiast APDS odpowiada za interpretację danych,
+            kontrolę procesu i synchronizację produktów.
+        </p>
+
+        <p>
+            Przebiegi synchronizacji są rejestrowane w
+            <strong>communication.log</strong>, zapewniając historię
+            wykonania procesu oraz jego wyniku.
+        </p>
+    </div>
+</div>
+
+
+</section>
+
+<section class="oe_container oe_dark">
+    <div class="oe_row oe_spaced">
+        <div class="oe_span12">
+            <h3>Audyt i raportowanie</h3>
+
+
+        <p>
+            Każdy przebieg APDS posiada własny zapis procesu,
+            obejmujący między innymi źródło danych, wersję danych,
+            rodzaj synchronizacji oraz wynik przetwarzania.
+        </p>
+
+        <p>
+            Po zakończeniu procesu dostępne jest podsumowanie
+            obejmujące liczbę przetworzonych, utworzonych,
+            zaktualizowanych i pominiętych rekordów oraz błędów.
+        </p>
+
+        <p>
+            Szczegółowe wyjątki są raportowane w ograniczonej,
+            diagnostycznej postaci, bez tworzenia trwałego
+            repozytorium milionów rekordów technicznych.
+        </p>
+    </div>
+</div>
+
+
+</section>
+
+<section class="oe_container">
+    <div class="oe_row oe_spaced">
+        <div class="oe_span4">
+            <h4>Źródło danych</h4>
+            <p>
+                Zewnętrzne źródło produktów udostępniające dane
+                poprzez dedykowany kanał SFTP.
+            </p>
+        </div>
+
+
+    <div class="oe_span4">
+        <h4>Odoo</h4>
+        <p>
+            Produkty w Odoo pozostają docelowym miejscem
+            zastosowania zsynchronizowanych danych.
+        </p>
+    </div>
+
+    <div class="oe_span4">
+        <h4>APDS</h4>
+        <p>
+            Warstwa odpowiedzialna za kontrolowany przepływ
+            danych pomiędzy źródłem a Odoo.
+        </p>
+    </div>
+</div>
+
+
+</section>
+
+<section class="oe_container oe_separator"></section>
+
+<section class="oe_container">
+    <div class="oe_row">
+        <div class="oe_span12">
+            <p class="oe_mt32">
+                <strong>APDS</strong> został zaprojektowany jako rozwiązanie
+                do kontrolowanej, audytowalnej i skalowalnej synchronizacji
+                danych produktów w Odoo.
+            </p>
+        </div>
+    </div>
+</section>
+
+<section class="oe_container">
+    <div class="oe_row oe_spaced">
+        <div class="oe_span12" style="text-align:center;">
+            <img src="AI-Ready-optimized.png"
+                 alt="Zoptymalizowany do pracy z systemami AI"
+                 style="max-width:100%; height:auto;"/>
+        </div>
+    </div>
+</section>
+
+</div>
+

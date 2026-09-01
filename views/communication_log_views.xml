@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+	<record id="hfb_apds_view_communication_log_search" model="ir.ui.view">
+		<field name="name">communication.log.search.apds</field>
+		<field name="model">communication.log</field>
+		<field name="arch" type="xml">
+			<search>
+				<filter
+					name="apds_logs"
+					string="Logi APDS"
+					domain="[('provider_id.provider_type', '=', 'apds')]"
+				/>
+			</search>
+		</field>
+	</record>
+
+    <record id="view_communication_log_form_inherit_apds" model="ir.ui.view">
+        <field name="name">communication.log.form.inherit.apds</field>
+        <field name="model">communication.log</field>
+        <field name="inherit_id" ref="hfb_xmlmap_exporter.view_communication_log_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//sheet" position="inside">
+                <group string="APDS" invisible="provider_type != 'apds'">
+                    <group>
+                        <field name="apds_stage"/>
+                        <field name="apds_result"/>
+                        <field name="apds_sync_type"/>
+                        <field name="apds_source_version"/>
+                    </group>
+                    <group>
+                        <field name="apds_records_total"/>
+                        <field name="apds_records_processed"/>
+						<field name="apds_records_created"/>
+						<field name="apds_records_updated"/>
+                        <field name="apds_records_skipped"/>
+                        <field name="apds_records_error"/>
+                    </group>
+                </group>
+            </xpath>
+        </field>
+    </record>
+
+
+</odoo>
