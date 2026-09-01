@@ -1,4 +1,4 @@
-i# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 # vim: tabstop=4 softtabstop=0 shiftwidth=4 smarttab expandtab fileformat=unix
 #################################################################################
 #

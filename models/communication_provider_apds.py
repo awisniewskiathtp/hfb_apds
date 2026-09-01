@@ -28,7 +28,7 @@ przetestowana na realnym połączeniu SFTP w kontekście tego modułu.
 """
 import logging
 
-from odoo import fields, models
+from odoo import api, fields, models, _
 from odoo.exceptions import UserError
 
 _logger = logging.getLogger(__name__)
