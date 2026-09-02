@@ -144,6 +144,8 @@ class CommunicationLogE2(models.Model):
 		counters = {"ok": 0, "skipped": 0, "error": 0}
 		batch = []
 
+		now = fields.Datetime.now()
+
 		with open(filepath, "rb") as f:
 			records = ijson.items(f, "item")
 
@@ -154,7 +156,6 @@ class CommunicationLogE2(models.Model):
 				result = map_alias_record_to_staging(record)
 				counters[result.status] += 1
 
-				now = fields.Datetime.now()
 				row = _row_from_mapping_result(self.id, uid, now, result)
 				batch.append((offset, row))
 

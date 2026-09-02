@@ -35,73 +35,185 @@
    @author Andrzej Wiśniewski (warp3r)
    @date   2026-09-01
 """
+
 from odoo import api, fields, models, _
 from odoo.exceptions import UserError, ValidationError
 
 import logging
 _logger = logging.getLogger(__name__)
 
+from .apds_product_sync import staging_line_to_product_vals
+
+
 class CommunicationLogE3(models.Model):
 	_inherit = "communication.log"
 
-	def _apds_stage_process(self, log=None):
+	def _apds_stage_process(self):
+		"""Etap 3 procesu APDS - przetwarzanie przygotowanych danych.
+
+		Pętla pobiera kolejne partie rekordów apds.staging.line
+		(state='draft') przez FOR UPDATE SKIP LOCKED - pozwala to na
+		bezpieczne równoległe działanie wielu workerów cron (Blok C,
+		ustalenie 2026-09-02) nad tym samym communication.log, bez
+		wzajemnej kolizji o te same rekordy.
+
+		Wewnątrz partii każdy rekord jest przetwarzany z osobnym
+		SAVEPOINT (Blok D) - błąd pojedynczego rekordu nie niszczy
+		pozostałych w tej samej partii (UC-07), rekord trafia do
+		state='error' z error_message, przetwarzanie kontynuuje się.
+
+		Po wyczerpaniu partii przez WSZYSTKICH workerów, JEDEN z nich
+		(zabezpieczone blokadą wiersza communication.log) wykonuje
+		finalizację: wiadomość na chatter, sprzątanie stagingu (Blok F),
+		ustawienie apds_result="manual" (Blok E - brak jeszcze progu
+		z punktu 9.4).
 		"""
-		Etap 3 procesu APDS — przetwarzanie przygotowanych danych.
-
-		Odpowiada za techniczne przetwarzanie rekordów znajdujących się
-		w tabeli stagingowej i synchronizację danych z Odoo.
-
-		Przetwarzanie odbywa się partiami. Poszczególne partie mogą być
-		obsługiwane równolegle przez workerów cron.
-
-		Etap obejmuje docelowo:
-			- pobranie dostępnej partii rekordów stagingowych,
-			- rezerwację rekordów z użyciem mechanizmu SKIP LOCKED,
-			- utworzenie lub aktualizację product.template,
-			- obsługę błędów pojedynczych rekordów,
-			- obsługę retry dla błędów infrastrukturalnych,
-			- aktualizację liczników communication.log,
-			- ocenę wyniku całego przebiegu,
-			- zakończenie procesu APDS.
-
-		Etap nie wykonuje ponownego mapowania danych źródłowych.
-		"""
-
-		provider = log.provider_id
+		provider = self.provider_id
 		config = provider._get_plugin_record()
 
 		if not config:
 			raise ValueError(
 				"Nie znaleziono konfiguracji providera APDS "
-				f"dla communication.log id={log.id}."
+				f"dla communication.log id={self.id}."
 			)
 
+		batch_size = config.apds_batch_size
+
 		_logger.info(
-			"[APDS] Rozpoczęcie Etapu 3 - przetwarzanie danych, log_id=%s",
-			log.id,
+			"[APDS] Etap 3 (log_id=%s): worker start, batch_size=%s",
+			self.id, batch_size,
 		)
 
-		# TODO:
-		# 1. Pobranie kolejnej partii rekordów stagingowych.
-		# 2. Rezerwacja partii przy użyciu FOR UPDATE SKIP LOCKED.
-		# 3. Przetwarzanie rekordów w niezależnych transakcjach
-		#	logicznych / SAVEPOINT.
-		# 4. Utworzenie lub aktualizacja product.template.
-		# 5. Aktualizacja stanu rekordów stagingowych.
-		# 6. Obsługa retry błędów infrastrukturalnych.
-		# 7. Aktualizacja liczników communication.log.
-		# 8. Sprawdzenie, czy wszystkie rekordy stagingowe zostały
-		#	przetworzone.
-		# 9. Ocena wyniku przebiegu:
-		#	   accepted / manual / error.
-		# 10. Zakończenie communication.log i usunięcie stagingu.
-		#
-		# Właściwa implementacja zostanie dodana po przygotowaniu
-		# mechanizmu workerów i obsługi stagingu.
+		while True:
+			reserved = self._apds_process_one_batch(batch_size)
+			if reserved == 0:
+				break
 
-		raise NotImplementedError(
-			"Etap 3 APDS - przetwarzanie danych nie został "
-			"jeszcze zaimplementowany."
+		self._apds_try_finalize_stage3()
+
+	def _apds_process_one_batch(self, batch_size):
+		"""Rezerwuje i przetwarza JEDNĄ partię rekordów stagingowych.
+
+		Zwraca liczbę zarezerwowanych rekordów (0 = nic więcej do
+		zrobienia - albo staging pusty, albo wszystko zajęte przez
+		innych workerów w tym samym momencie).
+		"""
+		self.env.cr.execute(
+			"""
+			SELECT id FROM apds_staging_line
+			WHERE communication_log_id = %s AND state = 'draft'
+			ORDER BY id
+			LIMIT %s
+			FOR UPDATE SKIP LOCKED
+			""",
+			(self.id, batch_size),
 		)
+		ids = [row[0] for row in self.env.cr.fetchall()]
+		if not ids:
+			return 0
+
+		lines = self.env["apds.staging.line"].browse(ids)
+		created = updated = errored = 0
+
+		for line in lines:
+			try:
+				with self.env.cr.savepoint():
+					vals = staging_line_to_product_vals(line)
+					product = self.env["product.template"].search(
+						[
+							("default_code", "=", line.default_code),
+							("active", "=", True),
+						],
+						order="id desc",
+						limit=1,
+					)
+					if product:
+						product.write(vals)
+						updated += 1
+					else:
+						self.env["product.template"].create(vals)
+						created += 1
+					line.write({"state": "processed"})
+			except Exception as exc:
+				errored += 1
+				line.write({
+					"state": "error",
+					"error_message": str(exc),
+				})
+				_logger.warning(
+					"[APDS] Etap 3 (log_id=%s): staging_line id=%s "
+					"błąd: %s",
+					self.id, line.id, exc,
+				)
+
+		self.write({
+			"apds_records_created": self.apds_records_created + created,
+			"apds_records_updated": self.apds_records_updated + updated,
+			"apds_records_error": self.apds_records_error + errored,
+			"apds_records_processed": (
+				self.apds_records_processed + created + updated
+			),
+		})
+		self.env.cr.commit()
+
+		return len(ids)
+
+	def _apds_try_finalize_stage3(self):
+		"""Domyka Etap 3 - ale tylko RAZ, nawet jeśli kilku workerów
+		(Blok C) jednocześnie wyczerpie dostępne partie stagingu.
+
+		Zabezpieczone blokadą wiersza communication.log (SELECT ...
+		FOR UPDATE, bez SKIP LOCKED - tu celowo CHCEMY czekać, nie
+		pomijać). Tylko jeden worker naraz wykonuje poniższą sekcję;
+		pozostali, po zwolnieniu blokady, widzą już
+		apds_operation == 'completed' i kończą bez powtórnej
+		finalizacji.
+		"""
+		self.env.cr.execute(
+			"SELECT apds_operation FROM communication_log "
+			"WHERE id = %s FOR UPDATE",
+			(self.id,),
+		)
+		current_operation = self.env.cr.fetchone()[0]
+
+		if current_operation == "completed":
+			self.env.cr.commit()  # zwalnia blokadę
+			return
+
+		remaining = self.env["apds.staging.line"].search_count([
+			("communication_log_id", "=", self.id),
+			("state", "=", "draft"),
+		])
+		if remaining:
+			self.env.cr.commit()  # zwalnia blokadę, inny worker pracuje
+			return
+
+		_logger.info(
+			"[APDS] Etap 3 (log_id=%s): koniec. utworzono=%s "
+			"zaktualizowano=%s błędy=%s",
+			self.id,
+			self.apds_records_created,
+			self.apds_records_updated,
+			self.apds_records_error,
+		)
+
+		self.message_post(body=(
+			f"Etap 3 (przetwarzanie) zakończony: "
+			f"utworzono={self.apds_records_created}, "
+			f"zaktualizowano={self.apds_records_updated}, "
+			f"błędy={self.apds_records_error}."
+		))
+
+		# Blok F: sprzątanie stagingu ograniczone do tego przebiegu
+		self.env["apds.staging.line"].search([
+			("communication_log_id", "=", self.id),
+		]).unlink()
+
+		# Blok E: brak jeszcze progu 9.4 - zawsze manualna weryfikacja
+		self.write({
+			"apds_result": "manual",
+			"apds_operation": "completed",
+		})
+		self.env.cr.commit()
 
 #EoF
