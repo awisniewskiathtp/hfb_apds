@@ -53,6 +53,9 @@ Nie do użytku produkcyjnego. Zob. README.md.
         "product",
         "hfb_xmlmap_exporter",
     ],
+    "external_dependencies": {
+        "python": ["ijson"],
+    },
     "data": [
         "security/ir.model.access.csv",
         "data/ir_cron.xml",

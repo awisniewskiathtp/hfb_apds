@@ -35,6 +35,7 @@ from . import communication_provider						# integracja z XET Base
 from . import communication_log								# integracja z XET Base
 from . import communication_provider_apds					# orkiestrator
 from . import apds_staging_line								# tabela techniczna
+from . import apds_field_mapping							# mapowanie 
 from . import communication_provider_apds_stage_download	# etat 1
 from . import communication_provider_apds_stage_prepare		# etap 2
 from . import communication_provider_apds_stage_process		# etap 3

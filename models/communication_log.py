@@ -44,6 +44,15 @@ class CommunicationLog(models.Model):
 	# ------------------------------------------------------------------
 	# Etap APDS (niezależny od bazowego 'state' - patrz docstring modułu)
 	# ------------------------------------------------------------------
+	apds_last_offset = fields.Integer(
+		string="Ostatni przetworzony offset (Etap 2)",
+		default=0,
+		help="Indeks (0-based) ostatniego rekordu źródłowego JSON "
+			 "potwierdzonego zapisem do apds.staging.line (commit). "
+			 "Używane do wznowienia Etapu 2 (UC-10) bez duplikacji "
+			 "i bez pominięć.",
+	)
+
 	apds_stage = fields.Selection(
 		[
 			("download", "Etap 1 - Pobranie pliku"),

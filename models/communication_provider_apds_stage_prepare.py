@@ -41,60 +41,165 @@ from odoo.exceptions import UserError, ValidationError
 import logging
 _logger = logging.getLogger(__name__)
 
+import csv
+import io
+import ijson
+
+from .apds_field_mapping import map_alias_record_to_staging, resolve_source_filepath
+
+STAGING_COLUMNS = [
+	"communication_log_id", "state",
+	"prefix", "index_code", "default_code",
+	"name", "description", "producer", "ean", "uom", "pkwiu",
+	"cn", "gtu", "tax", "oe", "supplier", "supplier_id",
+	"discount_group",
+	"price_buy_netto", "price_buy_brutto",
+	"price_sell_netto", "price_sell_brutto",
+	"stock_local", "stock_supplier", "stock_total",
+	"category_id_src", "category_name",
+	"flags_open",
+	"error_message",
+	"create_uid", "write_uid", "create_date", "write_date",
+]
+
+
+def _row_from_mapping_result(log_id, uid, now, result):
+	"""Buduje jeden wiersz (dict kolumna->wartość) dla COPY,
+	niezależnie od statusu wyniku mapowania (ok/skipped/error)."""
+	row = {col: None for col in STAGING_COLUMNS}
+	row.update({
+		"communication_log_id": log_id,
+		"create_uid": uid,
+		"write_uid": uid,
+		"create_date": now,
+		"write_date": now,
+	})
+
+	if result.status == "ok":
+		row["state"] = "draft"
+		row.update(result.data)
+	elif result.status == "skipped":
+		row["state"] = "skipped"
+		row["error_message"] = result.reason
+	elif result.status == "error":
+		row["state"] = "error"
+		row["error_message"] = result.reason
+		if result.data:
+			row.update(result.data)
+
+	return row
+
+
+def _copy_batch_to_staging(cr, rows):
+	"""Zapisuje batch wierszy do apds.staging.line przez COPY."""
+	buf = io.StringIO()
+	writer = csv.writer(buf)
+	for row in rows:
+		writer.writerow([row[col] for col in STAGING_COLUMNS])
+	buf.seek(0)
+
+	columns_sql = ", ".join(STAGING_COLUMNS)
+	cr.copy_expert(
+		f"COPY apds_staging_line ({columns_sql}) FROM STDIN WITH CSV",
+		buf,
+	)
+
+
 class CommunicationLogE2(models.Model):
 	_inherit = "communication.log"
 
-	def _apds_stage_prepare(self, log=None):
+	def _apds_stage_prepare(self):
+		"""Etap 2 procesu APDS - przygotowanie danych do przetwarzania.
+
+		Streamingowo czyta plik JSON znaleziony w katalogu roboczym
+		providera, mapuje każdy rekord statycznie (apds_field_mapping),
+		i zapisuje wyniki (ok/skipped/error) do apds.staging.line
+		przez PostgreSQL COPY, w batchach. Każdy batch to osobna
+		transakcja (commit), z atomową aktualizacją apds_last_offset -
+		pozwala to na bezpieczne wznowienie (UC-10) bez duplikacji
+		i bez pominięć w razie awarii w trakcie.
+
+		Nie wykonuje synchronizacji produktów w Odoo - to Etap 3.
 		"""
-		Etap 2 procesu APDS — przygotowanie danych do przetwarzania.
-
-		Odpowiada za techniczne przygotowanie pobranego pliku źródłowego
-		do późniejszego przetwarzania przez workerów Etapu 3.
-
-		Etap obejmuje docelowo:
-			- rozpakowanie archiwum 7z,
-			- streamingowy odczyt JSON,
-			- rozwiązanie mapowania,
-			- kontrolę danych,
-			- zapis przygotowanych rekordów do stagingu PostgreSQL.
-
-		Nie wykonuje synchronizacji produktów w Odoo.
-		"""
-
-		if not log:
-			log = self
-
-		provider = log.provider_id
+		provider = self.provider_id
 		config = provider._get_plugin_record()
 
 		if not config:
 			raise ValueError(
 				"Nie znaleziono konfiguracji providera APDS "
-				f"dla communication.log id={log.id}."
+				f"dla communication.log id={self.id}."
 			)
 
+		filepath = resolve_source_filepath(config.local_staging_dir)
+		batch_size = config.apds_batch_size
+
 		_logger.info(
-			"[APDS] Rozpoczęcie Etapu 2 - przygotowanie danych, log_id=%s",
-			log.id,
+			"[APDS] Etap 2 (log_id=%s): start, plik=%s, batch_size=%s, "
+			"wznowienie_od_offsetu=%s",
+			self.id, filepath, batch_size, self.apds_last_offset,
 		)
 
-		# TODO:
-		# 1. Odczyt pobranego pliku źródłowego.
-		# 2. Rozpakowanie archiwum 7z.
-		# 3. Streamingowy odczyt JSON.
-		# 4. Rozwiązanie mapowania danych.
-		# 5. Walidacja rekordów.
-		# 6. Załadowanie danych do hfb_apds_staging_line
-		#	z wykorzystaniem PostgreSQL COPY.
-		# 7. Ustalenie rodzaju synchronizacji (full/diff).
-		# 8. Przygotowanie danych dla Etapu 3.
-		#
-		# Właściwa implementacja zostanie dodana po zamknięciu
-		# kontraktu danych źródłowych i mapowania.
+		uid = self.env.uid
+		counters = {"ok": 0, "skipped": 0, "error": 0}
+		batch = []
 
-		raise NotImplementedError(
-			"Etap 2 APDS - przygotowanie danych nie został "
-			"jeszcze zaimplementowany."
+		with open(filepath, "rb") as f:
+			records = ijson.items(f, "item")
+
+			for offset, record in enumerate(records):
+				if offset < self.apds_last_offset:
+					continue  # już potwierdzone w poprzednim przebiegu
+
+				result = map_alias_record_to_staging(record)
+				counters[result.status] += 1
+
+				now = fields.Datetime.now()
+				row = _row_from_mapping_result(self.id, uid, now, result)
+				batch.append((offset, row))
+
+				if len(batch) >= batch_size:
+					self._apds_flush_batch(batch)
+					batch = []
+
+			if batch:
+				self._apds_flush_batch(batch)
+
+		self.write({
+			"apds_records_total": sum(counters.values()),
+			"apds_records_skipped": counters["skipped"],
+			"apds_records_error": counters["error"],
+		})
+		self.env.cr.commit()
+
+		_logger.info(
+			"[APDS] Etap 2 (log_id=%s): koniec. ok=%s skipped=%s error=%s",
+			self.id, counters["ok"], counters["skipped"], counters["error"],
 		)
+
+		self.message_post(body=(
+			f"Etap 2 (przygotowanie) zakończony: "
+			f"OK={counters['ok']}, pominięte={counters['skipped']}, "
+			f"błędy={counters['error']}."
+		))
+
+		self.write({
+			"apds_stage": "process",
+			"apds_operation": "process",
+		})
+		self.env.cr.commit()
+
+	def _apds_flush_batch(self, batch):
+		"""Zapisuje jeden batch (lista (offset, row)) do stagingu
+		i atomowo aktualizuje apds_last_offset - w JEDNEJ transakcji,
+		commit dopiero po obu operacjach (patrz ustalenie 2026-09-02,
+		Blok 6)."""
+		last_offset = batch[-1][0]
+		rows = [row for _offset, row in batch]
+
+		_copy_batch_to_staging(self.env.cr, rows)
+		self.write({"apds_last_offset": last_offset + 1})
+
+		self.env.cr.commit()
+
 
 #EoF
