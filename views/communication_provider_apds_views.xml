@@ -26,6 +26,7 @@
                         <field name="apds_batch_size"/>
                         <field name="sftp_remote_path"/>
                         <field name="local_staging_dir"/>
+						<field name="apds_cleanup_source_file"/>
                     </group>
                 </sheet>
             </form>

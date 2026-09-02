@@ -182,6 +182,13 @@ class CommunicationLogE2(models.Model):
 			f"błędy={counters['error']}."
 		))
 
+		if config.apds_cleanup_source_file:
+			os.remove(filepath)
+			_logger.info(
+				"[APDS] Etap 2 (log_id=%s): usunięto plik źródłowy %s",
+				self.id, filepath,
+			)
+
 		self.write({
 			"apds_stage": "process",
 			"apds_operation": "process",

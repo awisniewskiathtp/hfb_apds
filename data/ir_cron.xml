@@ -2,7 +2,7 @@
 <odoo>
 
 	<record id="ir_cron_apds_init" model="ir.cron">
-		<field name="name">APDS - inicjowanie przebiegu</field>
+		<field name="name">♻️  APDS - inicjowanie przebiegu</field>
 		<field name="model_id"
 			   ref="hfb_apds.model_communication_provider_apds"/>
 		<field name="state">code</field>
@@ -13,7 +13,7 @@
 	</record>
 
 	<record id="ir_cron_apds_process" model="ir.cron">
-		<field name="name">APDS - przetwarzanie przebiegów</field>
+		<field name="name">♻️  APDS - przetwarzanie przebiegów</field>
 		<field name="model_id"
 			   ref="hfb_apds.model_communication_log"/>
 		<field name="state">code</field>

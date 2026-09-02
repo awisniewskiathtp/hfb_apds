@@ -50,6 +50,17 @@ class CommunicationProviderAPDS(models.Model):
 	# Kanał SFTP (APDS_projekt.md, sekcja 3: SFTP + plik skompresowany
 	# 7zip; nazwa pliku pełnego jest stała po stronie klienta)
 	# ------------------------------------------------------------------
+	apds_cleanup_source_file = fields.Boolean(
+		string="Usuwaj plik źródłowy po przetworzeniu",
+		default=True,
+		help="Jeśli zaznaczone, plik źródłowy w katalogu roboczym "
+			 "(local_staging_dir) zostanie usunięty po zakończeniu "
+			 "Etapu 2. Jeśli odznaczone, plik pozostaje na dysku - "
+			 "wymaga wtedy ręcznego sprzątania przed kolejnym importem, "
+			 "inaczej resolve_source_filepath() zgłosi błąd (więcej "
+			 "niż jeden plik w katalogu).",
+	)
+
 	sftp_host = fields.Char(string="Host SFTP", required=True)
 	sftp_port = fields.Integer(string="Port SFTP", default=22)
 	sftp_username = fields.Char(string="Użytkownik SFTP")
