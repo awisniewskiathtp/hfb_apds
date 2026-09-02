@@ -25,6 +25,8 @@ _logger = logging.getLogger(__name__)
 
 from .apds_product_sync import staging_line_to_product_vals
 
+import time
+from psycopg2.errors import SerializationFailure
 
 # ------------------------------------------------------------------
 # DIAGNOSTYKA WYDAJNOŚCI - TYMCZASOWE (faza prototypu, 2026-09-02)
@@ -104,86 +106,42 @@ class CommunicationLogE3(models.Model):
 
 		self._apds_try_finalize_stage3()
 
-	def _apds_process_one_batch(self, batch_size):
-		"""Rezerwuje i przetwarza JEDNĄ partię rekordów stagingowych.
+	def _apds_reserve_batch_with_retry(self, batch_size, max_attempts=5):
+		"""Rezerwuje partię rekordów stagingowych przez
+		SELECT ... FOR UPDATE SKIP LOCKED, z retry na SerializationFailure
+		(REPEATABLE READ - patrz docstring _apds_process_one_batch).
 
-		Zwraca liczbę zarezerwowanych rekordów (0 = nic więcej do
-		zrobienia - albo staging pusty, albo wszystko zajęte przez
-		innych workerów w tym samym momencie).
-
-		Optymalizacje (2026-09-02, po pierwszym teście wydajności):
-		- Product z kontekstem wyłączającym maszynerię mail.thread
-		  (chatter/tracking/followers) - obserwowany główny koszt
-		  pojedynczego create()/write() w pierwszym teście.
-		- JEDNO zapytanie search() na cały batch zamiast N zapytań
-		  w pętli (poprzednia wersja robiła search() per rekord).
+		Po nieudanej próbie wymagany jest rollback przed ponowieniem -
+		transakcja jest przerwana po SerializationFailure i nie można
+		w niej wykonać kolejnego zapytania bez rollbacku.
 		"""
-		self.env.cr.execute(
-			"""
-			SELECT id FROM apds_staging_line
-			WHERE communication_log_id = %s AND state = 'draft'
-			ORDER BY id
-			LIMIT %s
-			FOR UPDATE SKIP LOCKED
-			""",
-			(self.id, batch_size),
-		)
-		ids = [row[0] for row in self.env.cr.fetchall()]
-		if not ids:
-			return 0
-
-		lines = self.env["apds.staging.line"].browse(ids)
-		created = updated = errored = 0
-
-		Product = self.env["product.template"].with_context(
-			tracking_disable=True,			# wyłącza pełne field tracking
-			mail_create_nolog=True,			# nie loguje "utworzono" na chatterze
-			mail_create_nosubscribe=True,	# nie subskrybuje followerów
-			mail_notrack=True,			 	# dodatkowe wyłączenie trackingu
-		)
-
-		codes = lines.mapped("default_code")
-		existing_products = Product.search([
-			("default_code", "in", codes),
-			("active", "=", True),
-		], order="id desc")
-
-		# Blok B: przy duplikacie default_code bierzemy najnowszy (id desc) -
-		# setdefault zachowuje PIERWSZE napotkane wystąpienie klucza; przy
-		# wynikach posortowanych malejąco po id pierwszy trafiony jest
-		# właśnie najnowszy.
-		existing_by_code = {}
-		for product in existing_products:
-			existing_by_code.setdefault(product.default_code, product)
-
-		for line in lines:
+		for attempt in range(1, max_attempts + 1):
 			try:
-				with self.env.cr.savepoint():
-					vals = staging_line_to_product_vals(line)
-					product = existing_by_code.get(line.default_code)
-					if product:
-						product.write(vals)
-						updated += 1
-					else:
-						new_product = Product.create(vals)
-						existing_by_code[line.default_code] = new_product
-						created += 1
-					line.write({"state": "processed"})
-			except Exception as exc:
-				errored += 1
-				line.write({
-					"state": "error",
-					"error_message": str(exc),
-				})
-				_logger.warning(
-					"[APDS] Etap 3 (log_id=%s): staging_line id=%s "
-					"błąd: %s",
-					self.id, line.id, exc,
+				self.env.cr.execute(
+					"""
+					SELECT id FROM apds_staging_line
+					WHERE communication_log_id = %s AND state = 'draft'
+					ORDER BY id
+					LIMIT %s
+					FOR UPDATE SKIP LOCKED
+					""",
+					(self.id, batch_size),
 				)
+				return [row[0] for row in self.env.cr.fetchall()]
+			except SerializationFailure:
+				self.env.cr.rollback()
+				_logger.warning(
+					"[APDS] Etap 3 (log_id=%s): SerializationFailure przy "
+					"rezerwacji partii, próba %s/%s - ponawiam",
+					self.id, attempt, max_attempts,
+				)
+				time.sleep(0.1 * attempt)  # krótki, rosnący odstęp
 
-		self.env.cr.commit()
-
-		return len(ids)
+		raise RuntimeError(
+			f"[APDS] Etap 3 (log_id={self.id}): nie udało się "
+			f"zarezerwować partii po {max_attempts} próbach "
+			f"(SerializationFailure)."
+		)
 
 	def _apds_try_finalize_stage3(self):
 		"""Domyka Etap 3 - ale tylko RAZ, nawet jeśli kilku workerów
