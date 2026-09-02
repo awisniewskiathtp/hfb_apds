@@ -10,30 +10,11 @@
 # published by the Free Software Foundation, either version 3 of the
 # License, or (at your option) any later version.
 #
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
-#################################################################################
-# UWAGA / NOTICE:
-# "XET" oraz nazwa "Hadron for Business" są zastrzeżonymi znakami towarowymi
-# "XET" and "Hadron for Business" are trademarks of Hadron for Business sp. z o.o.
-#
-# Sam kod jest objęty licencją AGPLv3, ale koncepcje, pomysły i rozwiązania
-# biznesowe w nim zawarte nie są objęte tą licencją i pozostają własnością
-# autora.
-# The code is licensed under AGPLv3, but the concepts, ideas and business
-# solutions contained herein are not covered by this license and remain the
-# property of the author.
 #################################################################################
 """@version 19.0.1.0.0
    @owner  Hadron for Business Sp. z o.o.
    @author Andrzej Wiśniewski (warp3r)
-   @date   2026-09-01
+   @date   2026-09-02
 """
 
 from odoo import api, fields, models, _
@@ -43,6 +24,17 @@ import logging
 _logger = logging.getLogger(__name__)
 
 from .apds_product_sync import staging_line_to_product_vals
+
+
+# ------------------------------------------------------------------
+# DIAGNOSTYKA WYDAJNOŚCI - TYMCZASOWE (faza prototypu, 2026-09-02)
+# Włącza logowanie postępu workera co N batchy. Do usunięcia lub
+# ustawienia na None, gdy koncepcja zostanie zweryfikowana i wybrany
+# zostanie docelowy mechanizm przetwarzania - logowanie kosztuje
+# dodatkowe zapytanie (search_count) i nie powinno trafić na
+# produkcję w tej formie.
+# ------------------------------------------------------------------
+LOG_PROGRESS_EVERY_N_BATCHES = 10  # None = wyłączone całkowicie
 
 
 class CommunicationLogE3(models.Model):
@@ -84,10 +76,31 @@ class CommunicationLogE3(models.Model):
 			self.id, batch_size,
 		)
 
+		batch_count = 0
+		total_reserved = 0
+
 		while True:
 			reserved = self._apds_process_one_batch(batch_size)
 			if reserved == 0:
 				break
+
+			batch_count += 1
+			total_reserved += reserved
+
+			if (
+				LOG_PROGRESS_EVERY_N_BATCHES
+				and batch_count % LOG_PROGRESS_EVERY_N_BATCHES == 0
+			):
+				remaining = self.env["apds.staging.line"].search_count([
+					("communication_log_id", "=", self.id),
+					("state", "=", "draft"),
+				])
+				_logger.info(
+					"[APDS] Etap 3 (log_id=%s): worker postęp - "
+					"przetworzono %s rekordów w tym wywołaniu "
+					"(%s batchy), pozostało draft=%s",
+					self.id, total_reserved, batch_count, remaining,
+				)
 
 		self._apds_try_finalize_stage3()
 
@@ -97,6 +110,13 @@ class CommunicationLogE3(models.Model):
 		Zwraca liczbę zarezerwowanych rekordów (0 = nic więcej do
 		zrobienia - albo staging pusty, albo wszystko zajęte przez
 		innych workerów w tym samym momencie).
+
+		Optymalizacje (2026-09-02, po pierwszym teście wydajności):
+		- Product z kontekstem wyłączającym maszynerię mail.thread
+		  (chatter/tracking/followers) - obserwowany główny koszt
+		  pojedynczego create()/write() w pierwszym teście.
+		- JEDNO zapytanie search() na cały batch zamiast N zapytań
+		  w pętli (poprzednia wersja robiła search() per rekord).
 		"""
 		self.env.cr.execute(
 			"""
@@ -115,23 +135,38 @@ class CommunicationLogE3(models.Model):
 		lines = self.env["apds.staging.line"].browse(ids)
 		created = updated = errored = 0
 
+		Product = self.env["product.template"].with_context(
+			tracking_disable=True,			# wyłącza pełne field tracking
+			mail_create_nolog=True,			# nie loguje "utworzono" na chatterze
+			mail_create_nosubscribe=True,	# nie subskrybuje followerów
+			mail_notrack=True,			 	# dodatkowe wyłączenie trackingu
+		)
+
+		codes = lines.mapped("default_code")
+		existing_products = Product.search([
+			("default_code", "in", codes),
+			("active", "=", True),
+		], order="id desc")
+
+		# Blok B: przy duplikacie default_code bierzemy najnowszy (id desc) -
+		# setdefault zachowuje PIERWSZE napotkane wystąpienie klucza; przy
+		# wynikach posortowanych malejąco po id pierwszy trafiony jest
+		# właśnie najnowszy.
+		existing_by_code = {}
+		for product in existing_products:
+			existing_by_code.setdefault(product.default_code, product)
+
 		for line in lines:
 			try:
 				with self.env.cr.savepoint():
 					vals = staging_line_to_product_vals(line)
-					product = self.env["product.template"].search(
-						[
-							("default_code", "=", line.default_code),
-							("active", "=", True),
-						],
-						order="id desc",
-						limit=1,
-					)
+					product = existing_by_code.get(line.default_code)
 					if product:
 						product.write(vals)
 						updated += 1
 					else:
-						self.env["product.template"].create(vals)
+						new_product = Product.create(vals)
+						existing_by_code[line.default_code] = new_product
 						created += 1
 					line.write({"state": "processed"})
 			except Exception as exc:
@@ -146,14 +181,6 @@ class CommunicationLogE3(models.Model):
 					self.id, line.id, exc,
 				)
 
-		self.write({
-			"apds_records_created": self.apds_records_created + created,
-			"apds_records_updated": self.apds_records_updated + updated,
-			"apds_records_error": self.apds_records_error + errored,
-			"apds_records_processed": (
-				self.apds_records_processed + created + updated
-			),
-		})
 		self.env.cr.commit()
 
 		return len(ids)
@@ -189,20 +216,12 @@ class CommunicationLogE3(models.Model):
 			return
 
 		_logger.info(
-			"[APDS] Etap 3 (log_id=%s): koniec. utworzono=%s "
-			"zaktualizowano=%s błędy=%s",
+			"[APDS] Etap 3 (log_id=%s): koniec przetwarzania.",
 			self.id,
-			self.apds_records_created,
-			self.apds_records_updated,
-			self.apds_records_error,
 		)
 
-		self.message_post(body=(
-			f"Etap 3 (przetwarzanie) zakończony: "
-			f"utworzono={self.apds_records_created}, "
-			f"zaktualizowano={self.apds_records_updated}, "
-			f"błędy={self.apds_records_error}."
-		))
+		self.message_post(body="Etap 3 (przetwarzanie) zakończony.")
+
 
 		# Blok F: sprzątanie stagingu ograniczone do tego przebiegu
 		self.env["apds.staging.line"].search([

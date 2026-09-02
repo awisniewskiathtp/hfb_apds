@@ -98,9 +98,9 @@ def map_alias_record_to_staging(record: dict) -> MappingResult:
 		"price_sell_brutto": price_sell.get("brutto") or 0.0,
 
 		# stany
-		"stock_local": stock.get("local") or 0,
-		"stock_supplier": stock.get("supplier") or 0,
-		"stock_total": stock_total,
+		#"stock_local": stock.get("local") or 0,
+		#"stock_supplier": stock.get("supplier") or 0,
+		#"stock_total": stock_total,
 
 		# kategoria
 		"category_id_src": category.get("id"),
