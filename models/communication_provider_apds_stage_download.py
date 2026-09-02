@@ -44,7 +44,7 @@ _logger = logging.getLogger(__name__)
 class CommunicationLogE1(models.Model):
 	_inherit = "communication.log"
 
-	def _apds_stage_download(self, log):
+	def _apds_stage_download(self, log=None):
 		"""
 		Etap 1 procesu APDS — pobranie pliku źródłowego.
 

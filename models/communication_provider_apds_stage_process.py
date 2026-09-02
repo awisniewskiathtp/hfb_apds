@@ -44,7 +44,7 @@ _logger = logging.getLogger(__name__)
 class CommunicationLogE3(models.Model):
 	_inherit = "communication.log"
 
-	def _apds_stage_process(self, log):
+	def _apds_stage_process(self, log=None):
 		"""
 		Etap 3 procesu APDS — przetwarzanie przygotowanych danych.
 

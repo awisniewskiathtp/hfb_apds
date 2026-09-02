@@ -44,7 +44,7 @@ _logger = logging.getLogger(__name__)
 class CommunicationLogE2(models.Model):
 	_inherit = "communication.log"
 
-	def _apds_stage_prepare(self, log):
+	def _apds_stage_prepare(self, log=None):
 		"""
 		Etap 2 procesu APDS — przygotowanie danych do przetwarzania.
 
@@ -60,6 +60,9 @@ class CommunicationLogE2(models.Model):
 
 		Nie wykonuje synchronizacji produktów w Odoo.
 		"""
+
+		if not log:
+			log = self
 
 		provider = log.provider_id
 		config = provider._get_plugin_record()
