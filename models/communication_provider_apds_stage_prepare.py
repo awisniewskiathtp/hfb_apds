@@ -41,6 +41,7 @@ from odoo.exceptions import UserError, ValidationError
 import logging
 _logger = logging.getLogger(__name__)
 
+import os
 import csv
 import io
 import ijson
