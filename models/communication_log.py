@@ -67,7 +67,9 @@ class CommunicationLog(models.Model):
 
 	apds_result = fields.Selection(
 		[
-			("pending", "W trakcie"),
+			("pending", "Oczekuje"),
+			("running", "W trakcie realizacji"),
+			("done", "Zakończone"),
 			("accepted", "Zaakceptowane - nowy stan referencyjny"),
 			("manual", "Wymaga interwencji ręcznej"),
 			("error", "Błąd"),
@@ -75,10 +77,6 @@ class CommunicationLog(models.Model):
 		string="Wynik APDS",
 		default="pending",
 		tracking=True,
-		help="Wynik końcowy ustawiany po zamknięciu Etapu 3. 'accepted' "
-			 "oznacza, że dane z tego przebiegu stają się nowym stanem "
-			 "referencyjnym (APDS_projekt.md, sekcja 4.3). 'manual' "
-			 "oznacza, że poprzedni poprawny stan pozostaje obowiązujący.",
 	)
 
 	# ------------------------------------------------------------------
