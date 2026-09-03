@@ -105,13 +105,11 @@ def _copy_batch_to_staging(cr, rows):
 		buf,
 	)
 
-
 class CommunicationLogE2(models.Model):
 	_inherit = "communication.log"
 
 	def _apds_stage_prepare(self):
 		"""Etap 2 procesu APDS - przygotowanie danych do przetwarzania.
-
 		Streamingowo czyta plik JSON znaleziony w katalogu roboczym
 		providera, mapuje każdy rekord statycznie (apds_field_mapping),
 		i zapisuje wyniki (ok/skipped/error) do apds.staging.line
@@ -120,20 +118,38 @@ class CommunicationLogE2(models.Model):
 		pozwala to na bezpieczne wznowienie (UC-10) bez duplikacji
 		i bez pominięć w razie awarii w trakcie.
 
+		Etap 2 jest z natury sekwencyjny - w przeciwieństwie do Etapu 3
+		nie ma ochrony SKIP LOCKED na poziomie rekordów. Blokada
+		SELECT ... FOR UPDATE NOWAIT na starcie zabezpiecza przed
+		równoległym wejściem wielu workerów cron na ten sam rekord
+		(dyspozytor nie rozróżnia workerów Etapu 2 od Etapu 3 -
+		ustalenie 2026-09-02).
+
 		Nie wykonuje synchronizacji produktów w Odoo - to Etap 3.
 		"""
+		try:
+			self.env.cr.execute(
+				"SELECT id FROM communication_log WHERE id = %s FOR UPDATE NOWAIT",
+				(self.id,),
+			)
+		except Exception:
+			self.env.cr.rollback()
+			_logger.info(
+				"[APDS] Etap 2 (log_id=%s): rekord zajęty przez inny "
+				"worker, pomijam.",
+				self.id,
+			)
+			return
+
 		provider = self.provider_id
 		config = provider._get_plugin_record()
-
 		if not config:
 			raise ValueError(
 				"Nie znaleziono konfiguracji providera APDS "
 				f"dla communication.log id={self.id}."
 			)
-
 		filepath = resolve_source_filepath(config.local_staging_dir)
 		batch_size = config.apds_batch_size
-
 		_logger.info(
 			"[APDS] Etap 2 (log_id=%s): start, plik=%s, batch_size=%s, "
 			"wznowienie_od_offsetu=%s",

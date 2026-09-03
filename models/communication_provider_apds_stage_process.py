@@ -106,6 +106,70 @@ class CommunicationLogE3(models.Model):
 
 		self._apds_try_finalize_stage3()
 
+
+	def _apds_process_one_batch(self, batch_size):
+		"""Rezerwuje i przetwarza JEDNĄ partię rekordów stagingowych.
+
+		Zwraca liczbę zarezerwowanych rekordów (0 = nic więcej do
+		zrobienia - albo staging pusty, albo wszystko zajęte przez
+		innych workerów w tym samym momencie).
+
+		Rezerwacja może zakończyć się SerializationFailure pod
+		REPEATABLE READ - patrz _apds_reserve_batch_with_retry.
+		"""
+		ids = self._apds_reserve_batch_with_retry(batch_size)
+		if not ids:
+			return 0
+
+		lines = self.env["apds.staging.line"].browse(ids)
+		created = updated = errored = 0
+
+		Product = self.env["product.template"].with_context(
+			tracking_disable=True,
+			mail_create_nolog=True,
+			mail_create_nosubscribe=True,
+			mail_notrack=True,
+		)
+
+		codes = lines.mapped("default_code")
+		existing_products = Product.search([
+			("default_code", "in", codes),
+			("active", "=", True),
+		], order="id desc")
+
+		existing_by_code = {}
+		for product in existing_products:
+			existing_by_code.setdefault(product.default_code, product)
+
+		for line in lines:
+			try:
+				with self.env.cr.savepoint():
+					vals = staging_line_to_product_vals(line)
+					product = existing_by_code.get(line.default_code)
+					if product:
+						product.write(vals)
+						updated += 1
+					else:
+						new_product = Product.create(vals)
+						existing_by_code[line.default_code] = new_product
+						created += 1
+					line.write({"state": "processed"})
+			except Exception as exc:
+				errored += 1
+				line.write({
+					"state": "error",
+					"error_message": str(exc),
+				})
+				_logger.warning(
+					"[APDS] Etap 3 (log_id=%s): staging_line id=%s "
+					"błąd: %s",
+					self.id, line.id, exc,
+				)
+
+		self.env.cr.commit()
+
+		return len(ids)
+
 	def _apds_reserve_batch_with_retry(self, batch_size, max_attempts=5):
 		"""Rezerwuje partię rekordów stagingowych przez
 		SELECT ... FOR UPDATE SKIP LOCKED, z retry na SerializationFailure
@@ -143,6 +207,7 @@ class CommunicationLogE3(models.Model):
 			f"(SerializationFailure)."
 		)
 
+
 	def _apds_try_finalize_stage3(self):
 		"""Domyka Etap 3 - ale tylko RAZ, nawet jeśli kilku workerów
 		(Blok C) jednocześnie wyczerpie dostępne partie stagingu.
@@ -178,8 +243,25 @@ class CommunicationLogE3(models.Model):
 			self.id,
 		)
 
-		self.message_post(body="Etap 3 (przetwarzanie) zakończony.")
+		StagingLine = self.env["apds.staging.line"]
+		counts = {
+			row["state"]: row["state_count"]
+			for row in StagingLine.read_group(
+				[("communication_log_id", "=", self.id)],
+				["state"],
+				["state"],
+			)
+		}
+		processed = counts.get("processed", 0)  # lub suma processed_created+processed_updated, zależnie od wariantu
+		errored = counts.get("error", 0)
 
+		self.write({
+			"apds_records_processed": processed,
+			"apds_records_error": errored,
+			# apds_records_created / apds_records_updated - zależnie od wybranego wariantu
+		})
+
+		self.message_post(body="Etap 3 (przetwarzanie) zakończony.")
 
 		# Blok F: sprzątanie stagingu ograniczone do tego przebiegu
 		self.env["apds.staging.line"].search([
@@ -190,6 +272,7 @@ class CommunicationLogE3(models.Model):
 		self.write({
 			"apds_result": "manual",
 			"apds_operation": "completed",
+			"state":"received",
 		})
 		self.env.cr.commit()
 

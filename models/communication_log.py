@@ -180,6 +180,9 @@ class CommunicationLog(models.Model):
 
 		for log in logs:
 			try:
+				if log.state != "queued":
+					log.write({"state": "queued"})
+
 				if log.apds_stage == "download":
 					log._apds_stage_download()
 
