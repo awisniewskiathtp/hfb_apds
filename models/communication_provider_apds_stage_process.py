@@ -25,6 +25,7 @@ _logger = logging.getLogger(__name__)
 
 from .apds_product_sync import staging_line_to_product_vals
 
+import random
 import time
 from psycopg2.errors import SerializationFailure
 
@@ -178,6 +179,14 @@ class CommunicationLogE3(models.Model):
 		Po nieudanej próbie wymagany jest rollback przed ponowieniem -
 		transakcja jest przerwana po SerializationFailure i nie można
 		w niej wykonać kolejnego zapytania bez rollbacku.
+
+		Backoff z jitterem, bazowe opóźnienie 0.3s * numer próby
+		(2026-09-03) - dobrane względem zmierzonego czasu trwania
+		jednego batcha (~1,0-1,1s przy batch_size=1000, z wcześniejszych
+		testów) tak, żeby suma opóźnień dawała realny margines na
+		zakończenie kolidującej transakcji innego workera, nie tylko
+		rozproszenie momentów przebudzenia. Bez jittera wiele workerów
+		budzi się jednocześnie i ponownie koliduje (thundering herd).
 		"""
 		for attempt in range(1, max_attempts + 1):
 			try:
@@ -199,7 +208,9 @@ class CommunicationLogE3(models.Model):
 					"rezerwacji partii, próba %s/%s - ponawiam",
 					self.id, attempt, max_attempts,
 				)
-				time.sleep(0.1 * attempt)  # krótki, rosnący odstęp
+				base_delay = 0.5
+				jitter = 0.5
+				time.sleep(base_delay * attempt + random.uniform(0, jitter))
 
 		raise RuntimeError(
 			f"[APDS] Etap 3 (log_id={self.id}): nie udało się "
@@ -244,21 +255,19 @@ class CommunicationLogE3(models.Model):
 		)
 
 		StagingLine = self.env["apds.staging.line"]
-		counts = {
-			row["state"]: row["state_count"]
-			for row in StagingLine.read_group(
-				[("communication_log_id", "=", self.id)],
-				["state"],
-				["state"],
-			)
-		}
-		processed = counts.get("processed", 0)  # lub suma processed_created+processed_updated, zależnie od wariantu
+		groups = StagingLine.formatted_read_group(
+			[("communication_log_id", "=", self.id)],
+			groupby=["state"],
+			aggregates=["__count"],
+		)
+		counts = {g["state"]: g["__count"] for g in groups}
+
+		processed = counts.get("processed", 0)
 		errored = counts.get("error", 0)
 
 		self.write({
 			"apds_records_processed": processed,
 			"apds_records_error": errored,
-			# apds_records_created / apds_records_updated - zależnie od wybranego wariantu
 		})
 
 		self.message_post(body="Etap 3 (przetwarzanie) zakończony.")
@@ -272,7 +281,7 @@ class CommunicationLogE3(models.Model):
 		self.write({
 			"apds_result": "manual",
 			"apds_operation": "completed",
-			"state":"received",
+			"state": "received",
 		})
 		self.env.cr.commit()
 

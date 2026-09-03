@@ -140,6 +140,15 @@ class CommunicationLogE2(models.Model):
 		)
 
 		try:
+			# Blok F: staging musi być pozbawiony rekordów przed startem
+			# Etapu 2 - sprzątamy WSZYSTKO dla tego providera, nie tylko
+			# tego rekordu, bo poprzedni, niedokończony przebieg (inny
+			# communication_log_id) mógł zostawić osierocone dane
+			# (ustalenie 2026-09-03, po wykryciu 2 123 576 osieroconych
+			# wierszy z log_id=2 podczas przebiegu log_id=3).
+			self.env.cr.execute("DELETE FROM apds_staging_line")
+			self.env.cr.commit()
+
 			provider = self.provider_id
 			config = provider._get_plugin_record()
 			if not config:
