@@ -31,6 +31,12 @@ Wynik zwracany jako MappingResult (status/data/reason), nie przez
 wyjątek - przy skali ~2,12 mln rekordów pomijanie na podstawie
 stock.total == 0 jest rutynowym, oczekiwanym wynikiem klasyfikacji
 rekordu, nie sytuacją wyjątkową.
+
+Reguła odrzucania rekordów bez wymaganych pól (2026-09-03, po
+potwierdzeniu na źródle: 1741 rekordów w pliku ma stock.total > 0
+i jednocześnie puste 'name'): brak 'name' -> status="error", rekord
+NIGDY nie trafia do product.template jako poprawny (APDS_projekt.md,
+sekcja 4.3 - błędne dane nie mogą zastąpić poprawnego stanu).
 """
 from typing import NamedTuple, Optional
 
@@ -40,18 +46,19 @@ SKIP_ON_ZERO_STOCK = True
 
 
 class MappingResult(NamedTuple):
-	status: str			 # "ok" | "skipped"
+	status: str			 # "ok" | "skipped" | "error"
 	data: Optional[dict]	# wypełnione tylko gdy status == "ok"
-	reason: Optional[str]   # wypełnione tylko gdy status == "skipped"
+	reason: Optional[str]   # wypełnione gdy status == "skipped" albo "error"
 
 
 def map_alias_record_to_staging(record: dict) -> MappingResult:
 	"""Mapuje JEDEN rekord źródłowy ALIAS (dict z JSON) na wynik
-	gotowy do zapisu w apds.staging.line albo na decyzję o pominięciu.
+	gotowy do zapisu w apds.staging.line albo na decyzję o pominięciu
+	lub odrzuceniu jako błędnego.
 
 	:param record: pojedynczy element tablicy JSON (jeden produkt)
-	:return: MappingResult ze statusem "ok" (wraz z data) albo
-		"skipped" (wraz z reason)
+	:return: MappingResult ze statusem "ok" (wraz z data), "skipped"
+		(wraz z reason) albo "error" (wraz z reason)
 	"""
 	stock = record.get("stock") or {}
 	stock_total = stock.get("total") or 0
@@ -62,6 +69,14 @@ def map_alias_record_to_staging(record: dict) -> MappingResult:
 	prefix = record.get("prefix") or ""
 	index = record.get("index") or ""
 	default_code = f"{prefix} {index}".strip()
+
+	name = record.get("name") or ""
+	if not name.strip():
+		return MappingResult(
+			status="error",
+			data=None,
+			reason=f"Brak wymaganej wartości 'name' (default_code={default_code!r})",
+		)
 
 	price = record.get("price") or {}
 	price_buy = price.get("buy") or {}
@@ -77,7 +92,7 @@ def map_alias_record_to_staging(record: dict) -> MappingResult:
 		"default_code": default_code,
 
 		# pola podstawowe
-		"name": record.get("name") or "",
+		"name": name,
 		"description": record.get("description") or "",
 		"producer": record.get("producer") or "",
 		"ean": record.get("ean") or "",
