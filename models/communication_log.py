@@ -36,6 +36,8 @@ szkieletowych.
 """
 from odoo import fields, models
 import logging
+import os
+from markupsafe import Markup, escape
 _logger = logging.getLogger(__name__)
 
 class CommunicationLog(models.Model):
@@ -217,5 +219,57 @@ class CommunicationLog(models.Model):
 				)
 				raise
 
+
+	def _apds_log_server_stats(self, label):
+		"""Zapisuje na chatter bieżący stan zasobów serwera (RAM, dysk,
+		obciążenie CPU) - do wywołania przed i po zasobożernych etapach
+		APDS, żeby zdiagnozować, czy awarie (2026-09-03) wynikają
+		z nasycenia zasobów infrastruktury, nie z logiki aplikacji."""
+		import shutil
+		from markupsafe import Markup
+
+		try:
+			with open("/proc/meminfo") as f:
+				meminfo = {}
+				for line in f:
+					key, val = line.split(":")
+					meminfo[key.strip()] = int(val.strip().split()[0])  # kB
+			mem_total_gb = meminfo.get("MemTotal", 0) / 1024 / 1024
+			mem_available_gb = meminfo.get("MemAvailable", 0) / 1024 / 1024
+			mem_used_gb = mem_total_gb - mem_available_gb
+		except Exception as exc:
+			mem_total_gb = mem_available_gb = mem_used_gb = None
+			_logger.warning("[APDS] Nie udało się odczytać /proc/meminfo: %s", exc)
+
+		try:
+			disk = shutil.disk_usage("/")
+			disk_total_gb = disk.total / 1024 / 1024 / 1024
+			disk_used_gb = disk.used / 1024 / 1024 / 1024
+			disk_free_gb = disk.free / 1024 / 1024 / 1024
+		except Exception as exc:
+			disk_total_gb = disk_used_gb = disk_free_gb = None
+			_logger.warning("[APDS] Nie udało się odczytać disk_usage: %s", exc)
+
+		try:
+			load1, load5, load15 = os.getloadavg()
+		except Exception as exc:
+			load1 = load5 = load15 = None
+			_logger.warning("[APDS] Nie udało się odczytać getloadavg: %s", exc)
+
+		if mem_total_gb is not None and disk_total_gb is not None and load1 is not None:
+			self.message_post(
+				body=Markup(f"""
+				<b>Stan serwera ({label})</b><br/>
+				RAM: {mem_used_gb:.1f} / {mem_total_gb:.1f} GB użyte (dostępne: {mem_available_gb:.1f} GB)<br/>
+				Dysk (/): {disk_used_gb:.1f} / {disk_total_gb:.1f} GB użyte (wolne: {disk_free_gb:.1f} GB)<br/>
+				Load average (1/5/15 min): {load1:.2f} / {load5:.2f} / {load15:.2f}
+				"""),
+				message_type="notification",
+			)
+		else:
+			self.message_post(
+				body=Markup(f"<b>Stan serwera ({label})</b><br/>Błąd odczytu części statystyk - patrz log serwera."),
+				message_type="notification",
+			)
 
 #EoF

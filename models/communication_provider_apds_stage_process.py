@@ -64,6 +64,8 @@ class CommunicationLogE3(models.Model):
 		z punktu 9.4).
 		"""
 
+		self._apds_log_server_stats("Etap 3 - start")
+
 		self.env.cr.execute(
 			"UPDATE communication_log SET state = 'queued' "
 			"WHERE id = %s AND state NOT IN ('received', 'error', 'superseded')",
@@ -291,6 +293,8 @@ class CommunicationLogE3(models.Model):
 			"apds_operation": "completed",
 			"state": "received",
 		})
+
+		self._apds_log_server_stats("Etap 3 - koniec (finalizacja)")
 		self.env.cr.commit()
 
 #EoF
