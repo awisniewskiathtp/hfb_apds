@@ -108,21 +108,6 @@ def _copy_batch_to_staging(cr, rows):
 class CommunicationLogE2(models.Model):
 	_inherit = "communication.log"
 
-	def _apds_try_acquire(self):
-		"""Atomowo sprawdza i zmienia apds_result: pending -> running.
-		Zwraca True, jeśli TEN proces uzyskał prawo do pracy (dokładnie
-		jeden wiersz zmieniony), False jeśli rekord nie był w stanie
-		'pending' (już przejęty, zakończony, w błędzie itd.)."""
-		self.env.cr.execute(
-			"UPDATE communication_log "
-			"SET apds_result = 'running' "
-			"WHERE id = %s AND apds_result = 'pending'",
-			(self.id,),
-		)
-		acquired = self.env.cr.rowcount == 1
-		self.env.cr.commit()
-		return acquired
-
 	def _apds_stage_prepare(self):
 		"""Etap 2 procesu APDS - przygotowanie danych do przetwarzania.
 		...

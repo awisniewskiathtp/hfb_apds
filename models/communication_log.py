@@ -136,6 +136,26 @@ class CommunicationLog(models.Model):
 	)
 
 
+	# pomocnicze
+	def _apds_try_acquire(self):
+		"""Atomowo sprawdza i zmienia apds_result: pending -> running,
+		jednocześnie ustawiając state='queued'. Wspólne dla wszystkich
+		trzech etapów APDS (2026-09-03 - podział odpowiedzialności:
+		dyspozytor tylko reaguje na state, metody etapów go ustawiają).
+		Zwraca True, jeśli TEN proces uzyskał prawo do pracy (dokładnie
+		jeden wiersz zmieniony), False jeśli rekord nie był w stanie
+		'pending' (już przejęty, zakończony, w błędzie itd.)."""
+		self.env.cr.execute(
+			"UPDATE communication_log "
+			"SET apds_result = 'running', state = 'queued' "
+			"WHERE id = %s AND apds_result = 'pending'",
+			(self.id,),
+		)
+		acquired = self.env.cr.rowcount == 1
+		self.env.cr.commit()
+		return acquired
+
+
 	# ------------------------------------------------------------------
 	# CRON — przetwarzanie przebiegów APDS
 	#

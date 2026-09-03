@@ -63,6 +63,14 @@ class CommunicationLogE3(models.Model):
 		ustawienie apds_result="manual" (Blok E - brak jeszcze progu
 		z punktu 9.4).
 		"""
+
+		self.env.cr.execute(
+			"UPDATE communication_log SET state = 'queued' "
+			"WHERE id = %s AND state NOT IN ('received', 'error', 'superseded')",
+			(self.id,),
+		)
+		self.env.cr.commit()
+
 		provider = self.provider_id
 		config = provider._get_plugin_record()
 
