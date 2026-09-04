@@ -32,7 +32,9 @@ from odoo import api, fields, models, _
 from odoo.exceptions import UserError
 
 _logger = logging.getLogger(__name__)
-
+import os
+import uuid
+import urllib
 
 class CommunicationProviderAPDS(models.Model):
 	_name = "communication.provider.apds"

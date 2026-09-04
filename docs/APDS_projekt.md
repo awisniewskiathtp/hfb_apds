@@ -625,6 +625,52 @@ Konsekwencje:
 
 Zaktualizowano sekcje 3, 5.2, 6.0, 9.8, dodano 9.9.
 
+
+### 2026-09-04 — Etap 1 (pobranie pliku): protokół HTTP jako alternatywa dla SFTP, implementacja i pierwsze udane wykonanie
+
+Ustalono i zaimplementowano:
+
+- Konfiguracja providera (`communication.provider.apds`) rozszerzona o pole
+  `apds_download_protocol` (Selection: `sftp` / `http`, domyślnie `sftp`) —
+  determinuje, która grupa pól kanału jest używana przez `_apds_stage_download`.
+- Dla wariantu HTTP dodano pole `http_url` (pełny URL pliku źródłowego,
+  odpowiednik `sftp_remote_path`). Uwierzytelnienie HTTP na razie nieużywane
+  (obecny endpoint klienta nie go wymaga) — pola auth (Basic/token) odłożone
+  do czasu, gdy będą potrzebne.
+- Widok formularza providera pogrupowany warunkowo (`invisible` zależny od
+  `apds_download_protocol`): grupa "Kanał SFTP" (z przeniesionym tam
+  `sftp_remote_path`) i nowa grupa "Kanał HTTP".
+- `_apds_stage_download` (`communication_provider_apds_stage_download.py`,
+  klasa `CommunicationLogE1`) zaimplementowana w pełni: guard
+  `_apds_try_acquire` (wzorem Etapu 2), rozgałęzienie na
+  `_apds_download_via_sftp` (paramiko, auth hasłem albo kluczem prywatnym —
+  które wypełnione) / `_apds_download_via_http` (`urllib.request`,
+  strumieniowo), kontrola kompletności przez porównanie rozmiaru
+  (zdalny/`Content-Length` vs lokalny), przejście po sukcesie
+  `done → apds_stage="prepare" → pending` (wzorem Etapu 2), zapis
+  `file_name` na `communication.log` (bez `file_data`/`file_size` —
+  plik pozostaje na dysku, nie w bazie, ze względu na rozmiar ~2,2 GB).
+- **Poprawka po błędzie produkcyjnym:** pierwsza próba na `odoo19` zakończyła
+  się `PermissionError` przy zapisie do istniejącej ścieżki docelowej
+  (plik pod tą ścieżką pozostał z wcześniejszej ręcznej próby, inny
+  właściciel). Rozwiązanie: pobranie do pliku tymczasowego (`.part`) w tym
+  samym katalogu, a na końcu atomowa podmiana `os.replace()` — operacja
+  zależna od uprawnień do katalogu, nie do istniejącego pliku docelowego.
+  Zastosowano identycznie w obu wariantach (SFTP i HTTP).
+- `provider_test()` (`communication_provider_apds.py`) zaimplementowana
+  wzorem `communication_provider_localdir.py`: test zapisu w
+  `local_staging_dir` + test kanału (połączenie SFTP z odczytem rozmiaru
+  zdalnego pliku, albo żądanie `HEAD` dla HTTP), wynik jako
+  `display_notification`.
+- **2026-09-04, 09:34** — pierwsze udane wykonanie Etapu 1 na `odoo19`
+  (`communication.log id=4`, providerem `stg1`, protokół HTTP): pobrano
+  plik `export_products_merged.json`, 2 359 889 325 B, w ~100 s, bez
+  błędów. Rekord przeszedł do `apds_stage="prepare"`, `apds_result="pending"`
+  — gotowy do przejęcia przez Etap 2.
+
+Nowa zależność zewnętrzna modułu: `paramiko` (dopisana do
+`external_dependencies.python` w `__manifest__.py`, obok `ijson`).
+
 ---
 
 ## 12. Status dokumentu

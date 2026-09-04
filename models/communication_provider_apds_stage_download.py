@@ -38,7 +38,9 @@
 from odoo import api, fields, models, _
 from odoo.exceptions import UserError, ValidationError
 import requests
-import io, os
+import io
+import os
+import urllib
 import urllib.request
 import urllib.error
 
