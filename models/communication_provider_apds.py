@@ -50,6 +50,24 @@ class CommunicationProviderAPDS(models.Model):
 	# Kanał SFTP (APDS_projekt.md, sekcja 3: SFTP + plik skompresowany
 	# 7zip; nazwa pliku pełnego jest stała po stronie klienta)
 	# ------------------------------------------------------------------
+	apds_download_protocol = fields.Selection(
+		[
+			("sftp", "SFTP"),
+			("http", "HTTP"),
+		],
+		string="Protokół pobierania",
+		default="sftp",
+		required=True,
+		help="Protokół używany do pobrania pliku źródłowego w Etapie 1. "
+			 "Determinuje, która grupa pól konfiguracyjnych poniżej "
+			 "(SFTP / HTTP) jest używana przez _apds_stage_download.",
+	)
+
+	http_url = fields.Char(
+		string="Pełny URL pliku", 
+		store=True,
+	)
+
 	apds_cleanup_source_file = fields.Boolean(
 		string="Usuwaj plik źródłowy po przetworzeniu",
 		default=True,
@@ -231,5 +249,78 @@ class CommunicationProviderAPDS(models.Model):
 			)
 
 		return True
+
+
+	def provider_test(self):
+		"""Testuje konfigurację APDS (SFTP albo HTTP, zależnie od
+		apds_download_protocol) - wzorem provider_test w LocalDir."""
+		self.ensure_one()
+		_logger.info(f"[APDS] Test konfiguracji: {self.name}")
+
+		test_results = []
+
+		# 1. Test katalogu roboczego + zapisu tymczasowego pliku
+		try:
+			os.makedirs(self.local_staging_dir, exist_ok=True)
+			test_path = os.path.join(
+				self.local_staging_dir, f"test_{uuid.uuid4().hex[:8]}.txt"
+			)
+			with open(test_path, "wb") as f:
+				f.write(b"Test APDS plugin")
+			os.remove(test_path)
+			test_results.append(("Katalog roboczy", "OK", self.local_staging_dir))
+		except Exception as e:
+			test_results.append(("Katalog roboczy", "BŁĄD", str(e)))
+
+		# 2. Test kanału - zależnie od protokołu
+		if self.apds_download_protocol == "sftp":
+			try:
+				transport = paramiko.Transport((self.sftp_host, self.sftp_port))
+				if self.sftp_private_key:
+					key = paramiko.RSAKey.from_private_key(
+						io.StringIO(self.sftp_private_key)
+					)
+					transport.connect(username=self.sftp_username, pkey=key)
+				else:
+					transport.connect(
+						username=self.sftp_username, password=self.sftp_password
+					)
+				sftp = paramiko.SFTPClient.from_transport(transport)
+				remote_size = sftp.stat(self.sftp_remote_path).st_size
+				sftp.close()
+				transport.close()
+				test_results.append((
+					"Połączenie SFTP", "OK",
+					f"{self.sftp_remote_path} ({remote_size} B)",
+				))
+			except Exception as e:
+				test_results.append(("Połączenie SFTP", "BŁĄD", str(e)))
+
+		elif self.apds_download_protocol == "http":
+			try:
+				req = urllib.request.Request(self.http_url, method="HEAD")
+				with urllib.request.urlopen(req, timeout=30) as resp:
+					size = resp.headers.get("Content-Length", "?")
+					test_results.append((
+						"Połączenie HTTP", "OK",
+						f"status={resp.status}, rozmiar={size} B",
+					))
+			except Exception as e:
+				test_results.append(("Połączenie HTTP", "BŁĄD", str(e)))
+
+		result_text = "\n".join(
+			f"• {name}: {status} ({info})" for name, status, info in test_results
+		)
+
+		return {
+			"type": "ir.actions.client",
+			"tag": "display_notification",
+			"params": {
+				"title": f"Test APDS: {self.name}",
+				"message": result_text,
+				"type": "success" if all(t[1] == "OK" for t in test_results) else "warning",
+				"sticky": True,
+			},
+		}
 
 #EoF

@@ -5,31 +5,35 @@
         <field name="name">communication.provider.apds.form</field>
         <field name="model">communication.provider.apds</field>
         <field name="arch" type="xml">
-            <form string="Konfiguracja APDS">
-                <sheet>
-                    <group>
-                        <group>
-                            <field name="name"/>
-                            <field name="code"/>
-                            <field name="active"/>
-                            <field name="company_id"/>
-                        </group>
-                        <group string="Kanał SFTP">
-                            <field name="sftp_host"/>
-                            <field name="sftp_port"/>
-                            <field name="sftp_username"/>
-                            <field name="sftp_password" password="True"/>
-                            <field name="sftp_private_key"/>
-                        </group>
-                    </group>
-                    <group string="Pliki źródłowe">
-                        <field name="apds_batch_size"/>
-                        <field name="sftp_remote_path"/>
-                        <field name="local_staging_dir"/>
+			<form string="Konfiguracja APDS">
+				<sheet>
+					<group>
+						<group>
+							<field name="name"/>
+							<field name="code"/>
+							<field name="active"/>
+							<field name="company_id"/>
+							<field name="apds_download_protocol"/>
+						</group>
+						<group string="Kanał SFTP" invisible="apds_download_protocol != 'sftp'">
+							<field name="sftp_host"/>
+							<field name="sftp_port"/>
+							<field name="sftp_username"/>
+							<field name="sftp_password" password="True"/>
+							<field name="sftp_private_key"/>
+							<field name="sftp_remote_path"/>
+						</group>
+						<group string="Kanał HTTP" invisible="apds_download_protocol != 'http'">
+							<field name="http_url"/>
+						</group>
+					</group>
+					<group string="Pliki źródłowe">
+						<field name="apds_batch_size"/>
+						<field name="local_staging_dir"/>
 						<field name="apds_cleanup_source_file"/>
-                    </group>
-                </sheet>
-            </form>
+					</group>
+				</sheet>
+			</form>
         </field>
     </record>
 
