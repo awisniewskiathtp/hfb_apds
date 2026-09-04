@@ -42,6 +42,21 @@ Jeden `communication.log` reprezentuje jeden przebieg APDS.
 
 Pełny zbiór klienta ma obecnie około 2,12 mln rekordów i około 2,2 GB danych.
 
+
+### Sugerowana minimalna konfiguracja sprzętowa
+
+Dla pracy APDS z równoległym przetwarzaniem danych zalecana jest następująca konfiguracja:
+
+| Zasób | Minimum | Rekomendowane |
+|---|---:|---:|
+| CPU | 8 vCPU | 12+ vCPU |
+| RAM | 12 GB | 16+ GB |
+| SWAP | 2 × RAM | 2 × RAM |
+
+Konfiguracja minimalna pozwala na uruchomienie równoległego przetwarzania APDS z wykorzystaniem wielu workerów Odoo, natomiast konfiguracja rekomendowana zapewnia większy zapas zasobów podczas równoległego przetwarzania dużych zbiorów danych.
+
+**Uwaga:** wymagania dotyczą całego środowiska Odoo/PostgreSQL, a nie wyłącznie procesu APDS. Ostateczna liczba workerów oraz `batch_size` powinna zostać dobrana na podstawie testów wydajnościowych na konkretnym środowisku.
+
 ## 3. Instalacja
 
 Repozytorium projektu:

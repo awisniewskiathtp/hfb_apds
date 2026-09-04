@@ -10,40 +10,67 @@
 # License, or (at your option) any later version.
 #
 #################################################################################
-# STATUS: szkielet / prototyp roboczy.
+# STATUS: prototyp działający.
 #
 # Ten moduł rozszerza `hfb_xmlmap_exporter` (XET Base) o provider ALIAS
-# Product Data Synchronization (APDS), na wzór providera KSeF i Local Dir
-# już obecnych w module bazowym.
+# Product Data Synchronization (APDS), na wzór providerów dostępnych
+# w module bazowym.
 #
-# Architektura (zob. models/communication_log.py dla uzasadnienia):
+# Architektura:
 #   `communication.log` pozostaje centralną osią przebiegu. `hfb_apds` NIE
 #   wprowadza osobnego, równoległego modelu procesu - rozszerza
 #   `communication.log` przez `_inherit`, dodając pola specyficzne dla APDS
-#   (`apds_stage`, `apds_result`), analogicznie do `ksef_operation` /
-#   `ksef_status` w części KSeF.
+#   (`apds_stage`, `apds_result`, `apds_operation` oraz dane przebiegu).
+#
+# Przebieg APDS:
+#   Etap 1 — pobranie pliku
+#   Etap 2 — przygotowanie danych i zapis do stagingu
+#   Etap 3 — równoległe przetwarzanie stagingu
+#   Finalizacja — zakończenie przebiegu i czyszczenie stagingu
+#
+# Etap 3 wykorzystuje wielu workerów Odoo oraz mechanizm
+# SELECT ... FOR UPDATE SKIP LOCKED do równoległej rezerwacji partii.
+# Konflikty SerializationFailure przy rezerwacji partii są obsługiwane
+# przez rollback i ponowienie z backoffem i jitterem.
+#
+# Dane źródłowe są przetwarzane strumieniowo. Etap 2 zapisuje przygotowane
+# rekordy do technicznej tabeli stagingowej PostgreSQL, a Etap 3 synchronizuje
+# dane z `product.template`.
 #
 # Dokumenty źródłowe projektu (poza tym repozytorium):
-#   - APDS_projekt.md                      - proces biznesowy, przypadki użycia
-#   - ALIAS_Struktura_danych_zrodlowych.md - struktura danych wejściowych JSON
+#   - APDS_projekt.md
+#   - ALIAS_Struktura_danych_zrodlowych.md
 #
-# Zakres tego szkieletu: rejestracja providera w XET Base, rozszerzenie
-# communication.log o trzy stany APDS, model konfiguracji providera z polami
-# SFTP, model linii stagingu (Etap 2). Logika Etapów 1-3 jest SZKIELETEM
-# (sygnatury i punkty zaczepienia zgodne z kontraktem `communication.provider`
-# zweryfikowanym w kodzie `hfb_xmlmap_exporter`), NIE jest to działająca
-# implementacja - zob. README.md.
+# Moduł jest prototypem przeznaczonym do testów i walidacji procesu na danych
+# klienta. Nie jest jeszcze wersją produkcyjną.
 #################################################################################
 {
     "name": "ALIAS Product Data Synchronization",
-    "version": "19.0.0.1.0",
+    "version": "19.0.0.2.0",
     "category": "Inventory/Inventory",
-    "summary": "Provider APDS (ALIAS) dla XET Base - SZKIELET / PROTOTYP",
+    "summary": "ALIAS Product Data Synchronization (APDS) for XET Base",
     "description": """
-ALIAS Product Data Synchronization (APDS) - szkielet modułu
-=============================================================
-Status: prototyp / roboczy, punkt startowy integracji z hfb_xmlmap_exporter.
-Nie do użytku produkcyjnego. Zob. README.md.
+ALIAS Product Data Synchronization (APDS)
+==========================================
+
+Provider APDS dla hfb_xmlmap_exporter (XET Base).
+
+Moduł realizuje pełny prototypowy przebieg synchronizacji danych:
+
+    Etap 1 — pobranie pliku
+    Etap 2 — przygotowanie danych
+    Etap 3 — równoległe przetwarzanie
+    Finalizacja
+
+Etap 2 przetwarza źródłowy JSON strumieniowo i zapisuje przygotowane
+rekordy do technicznego stagingu PostgreSQL.
+
+Etap 3 wykorzystuje wielu workerów Odoo i równoległą rezerwację partii
+przez SELECT ... FOR UPDATE SKIP LOCKED. Dane stagingowe są następnie
+stosowane do product.template.
+
+Moduł jest prototypem przeznaczonym do testów i walidacji procesu.
+Nie jest przeznaczony do bezpośredniego użycia produkcyjnego.
 """,
     "author": "Hadron for business sp. z o.o.",
     "website": "https://hadron.eu.com",
@@ -59,10 +86,10 @@ Nie do użytku produkcyjnego. Zob. README.md.
     "data": [
         "security/ir.model.access.csv",
         "data/ir_cron.xml",
-		"views/communication_log_views.xml",
-		"views/communication_provider_views.xml",
+        "views/communication_log_views.xml",
+        "views/communication_provider_views.xml",
         "views/communication_provider_apds_views.xml",
-		"views/communication_provider_apds_menu.xml",	
+        "views/communication_provider_apds_menu.xml",
     ],
     "installable": True,
     "application": False,
