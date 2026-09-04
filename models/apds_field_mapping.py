@@ -72,11 +72,13 @@ def map_alias_record_to_staging(record: dict) -> MappingResult:
 
 	name = record.get("name") or ""
 	if not name.strip():
-		return MappingResult(
-			status="error",
-			data=None,
-			reason=f"Brak wymaganej wartości 'name' (default_code={default_code!r})",
-		)
+		name = default_code
+		if not name.strip():
+			return MappingResult(
+				status="error",
+				data=None,
+				reason=f"Brak wymaganej wartości 'name' (default_code={default_code!r})",
+			)
 
 	price = record.get("price") or {}
 	price_buy = price.get("buy") or {}
