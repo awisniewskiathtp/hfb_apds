@@ -70,6 +70,7 @@ NIGDY nie trafia do product.template jako poprawny (APDS_projekt.md,
 sekcja 4.3 - błędne dane nie mogą zastąpić poprawnego stanu).
 """
 from typing import NamedTuple, Optional
+import json
 
 # Reguła może zostać zmieniona/uchylona po decyzji klienta -
 # stąd jako nazwana stała, nie zaszyta bezpośrednio w logice.
@@ -156,7 +157,7 @@ def map_alias_record_to_staging(record: dict) -> MappingResult:
 
 		# flagi (na razie tylko "open" - reszta poza zakresem, patrz
 		# nagłówek pliku i APDS_projekt.md sekcja 9.6)
-		"flags_open": bool(flags.get("open")),
+		"flags": flags,
 	}
 	return MappingResult(status="ok", data=data, reason=None)
 

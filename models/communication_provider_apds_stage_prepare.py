@@ -40,6 +40,7 @@ import os
 import csv
 import io
 import ijson
+import json
 
 from .apds_field_mapping import map_alias_record_to_staging, resolve_source_filepath
 
@@ -53,7 +54,7 @@ STAGING_COLUMNS = [
 	"price_sell_netto", "price_sell_brutto",
 	"stock_local", "stock_supplier", "stock_total",
 	"category_id_src", "category_name",
-	"flags_open",
+	"flags",
 	"error_message",
 	"create_uid", "write_uid", "create_date", "write_date",
 ]
@@ -91,7 +92,13 @@ def _copy_batch_to_staging(cr, rows):
 	buf = io.StringIO()
 	writer = csv.writer(buf)
 	for row in rows:
-		writer.writerow([row[col] for col in STAGING_COLUMNS])
+		values = []
+		for col in STAGING_COLUMNS:
+			value = row[col]
+			if col == "flags" and value is not None:
+				value = json.dumps(value)
+			values.append(value)
+		writer.writerow(values)
 	buf.seek(0)
 
 	columns_sql = ", ".join(STAGING_COLUMNS)

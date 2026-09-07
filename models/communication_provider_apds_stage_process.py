@@ -38,6 +38,7 @@ import logging
 _logger = logging.getLogger(__name__)
 
 from .apds_product_sync import staging_line_to_product_vals
+from odoo import Command
 
 import random
 import time
@@ -175,9 +176,12 @@ class CommunicationLogE3(models.Model):
 						product.write(vals)
 						updated += 1
 					else:
-						new_product = Product.create(vals)
-						existing_by_code[line.default_code] = new_product
+						product = Product.create(vals)
+						existing_by_code[line.default_code] = product
 						created += 1
+
+					self._apds_sync_flags_tags(product, line.flags)
+
 					line.write({"state": "processed"})
 			except Exception as exc:
 				errored += 1
@@ -242,6 +246,56 @@ class CommunicationLogE3(models.Model):
 			f"(SerializationFailure)."
 		)
 
+
+	def _apds_sync_flags_tags(self, product, flags):
+		"""Synchronizuje product.tag na podstawie obiektu `flags` z pliku
+		źródłowego ALIAS (ustalenie 2026-09-07).
+
+		Zasada:
+		- klucz obecny w `flags` i == True  -> tag o nazwie klucza ma być
+		  ustawiony na produkcie
+		- klucz nieobecny lub == False	  -> tag ma być nieobecny
+		  (oba przypadki traktowane tożsamo)
+
+		Zestaw kluczy NIE jest zamknięty - lista flag w pliku klienta może
+		się zmieniać w czasie (nowe/inne nazwy), dlatego metoda operuje
+		dynamicznie po kluczach przekazanego słownika, bez zahardkodowanej
+		listy nazw.
+
+		OTWARTE / do ustalenia z klientem (na razie świadomie ignorowane):
+		ryzyko kolizji nazwy - jeśli klucz z `flags` pokryje się z nazwą
+		istniejącego, niepowiązanego tagu ustawionego ręcznie w Odoo,
+		może on zostać przypadkowo zdjęty przy tej synchronizacji.
+
+		:param product: rekord product.template (lub product.product)
+		:param flags: dict, np. {"urgent": True, "watch": False, ...}
+			(pole apds.staging.line.flags, może być None/pusty)
+		"""
+		Tag = self.env["product.tag"]
+		flags = flags or {}
+
+		active_names = {name for name, value in flags.items() if value is True}
+		inactive_names = set(flags.keys()) - active_names
+
+		tags_to_set = Tag
+		for name in active_names:
+			tag = Tag.search([("name", "=", name)], limit=1)
+			if not tag:
+				tag = Tag.create({"name": name})
+			tags_to_set |= tag
+
+		tags_to_unset = (
+			Tag.search([("name", "in", list(inactive_names))])
+			if inactive_names
+			else Tag
+		)
+
+		product.write({
+			"product_tag_ids": (
+				[Command.link(tag.id) for tag in tags_to_set]
+				+ [Command.unlink(tag.id) for tag in tags_to_unset]
+			)
+		})
 
 	def _apds_try_finalize_stage3(self):
 		"""Domyka Etap 3 - ale tylko RAZ, nawet jeśli kilku workerów

@@ -49,7 +49,7 @@ ale samo ładowanie danych (streaming JSON + PostgreSQL COPY, wzorem
 APDS_projekt.md/ustaleń o wydajności) nie jest tu zaimplementowane.
 """
 from odoo import fields, models
-
+import json
 
 class APDSStagingLine(models.Model):
     _name = "apds.staging.line"
@@ -117,4 +117,6 @@ class APDSStagingLine(models.Model):
 
     # flags.* (sekcja 9) - jeden reprezentatywny przykład zmapowany,
     # pozostałe do dodania razem z decyzją o docelowej liście tagów
-    flags_open = fields.Boolean()
+    flags = fields.Json()
+
+#EoF
