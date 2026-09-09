@@ -77,7 +77,17 @@ class CommunicationLog(models.Model):
 	# ------------------------------------------------------------------
 	# Etap APDS (niezależny od bazowego 'state' - patrz docstring modułu)
 	# ------------------------------------------------------------------
-	apds_source_size_bytes = fields.Integer(
+	apds_resource_waiting = fields.Boolean(
+		string="Oczekiwanie na zasoby",
+		default=False,
+	)
+
+	apds_source_size_bytes = fields.Float(
+		string="Rozmiar pliku źródłowego",
+		digits=(16, 0),
+	)
+
+	apds_source_size_ibytes = fields.Integer(
 		string="Rozmiar pliku źródłowego",
 		help="Rozmiar pliku źródłowego ustalony przed rozpoczęciem Etapu 1.",
 	)

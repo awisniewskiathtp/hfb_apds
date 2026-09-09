@@ -46,7 +46,7 @@
 #################################################################################
 {
     "name": "ALIAS Product Data Synchronization",
-    "version": "19.0.0.3.6",
+    "version": "19.0.0.3.7",
     "category": "Inventory/Inventory",
     "summary": "ALIAS Product Data Synchronization (APDS) for XET Base",
     "description": """
