@@ -61,22 +61,15 @@ class CommunicationLogE3(models.Model):
 	def _apds_stage_process(self):
 		"""Etap 3 procesu APDS - przetwarzanie przygotowanych danych.
 
-		Pętla pobiera kolejne partie rekordów apds.staging.line
-		(state='draft') przez FOR UPDATE SKIP LOCKED - pozwala to na
-		bezpieczne równoległe działanie wielu workerów cron (Blok C,
-		ustalenie 2026-09-02) nad tym samym communication.log, bez
-		wzajemnej kolizji o te same rekordy.
+		Jedno wywołanie workera przetwarza dokładnie jedną partię rekordów.
+		Równoległość zapewnia wiele niezależnych rekordów ir.cron oraz
+		rezerwacja batcha przez FOR UPDATE SKIP LOCKED.
 
-		Wewnątrz partii każdy rekord jest przetwarzany z osobnym
-		SAVEPOINT (Blok D) - błąd pojedynczego rekordu nie niszczy
-		pozostałych w tej samej partii (UC-07), rekord trafia do
-		state='error' z error_message, przetwarzanie kontynuuje się.
+		Po przetworzeniu batcha worker kończy bieżące wywołanie. Kolejny
+		batch zostanie podjęty przez następne wywołanie crona / workera.
 
-		Po wyczerpaniu partii przez WSZYSTKICH workerów, JEDEN z nich
-		(zabezpieczone blokadą wiersza communication.log) wykonuje
-		finalizację: wiadomość na chatter, sprzątanie stagingu (Blok F),
-		ustawienie apds_result="manual" (Blok E - brak jeszcze progu
-		z punktu 9.4).
+		Błąd pojedynczego rekordu obsługiwany jest wewnątrz
+		_apds_process_one_batch() przez SAVEPOINT.
 		"""
 
 		self._apds_log_server_stats("Etap 3 - start")
@@ -101,34 +94,21 @@ class CommunicationLogE3(models.Model):
 
 		_logger.info(
 			"[APDS] Etap 3 (log_id=%s): worker start, batch_size=%s",
-			self.id, batch_size,
+			self.id,
+			batch_size,
 		)
 
-		batch_count = 0
-		total_reserved = 0
+		reserved = self._apds_process_one_batch(batch_size)
 
-		while True:
-			reserved = self._apds_process_one_batch(batch_size)
-			if reserved == 0:
-				break
+		if reserved == 0:
+			self._apds_try_finalize_stage3()
+			return
 
-			batch_count += 1
-			total_reserved += reserved
-
-			if (
-				LOG_PROGRESS_EVERY_N_BATCHES
-				and batch_count % LOG_PROGRESS_EVERY_N_BATCHES == 0
-			):
-				remaining = self.env["apds.staging.line"].search_count([
-					("communication_log_id", "=", self.id),
-					("state", "=", "draft"),
-				])
-				_logger.info(
-					"[APDS] Etap 3 (log_id=%s): worker postęp - "
-					"przetworzono %s rekordów w tym wywołaniu "
-					"(%s batchy), pozostało draft=%s",
-					self.id, total_reserved, batch_count, remaining,
-				)
+		_logger.info(
+			"[APDS] Etap 3 (log_id=%s): przetworzono batch=%s rekordów",
+			self.id,
+			reserved,
+		)
 
 		self._apds_try_finalize_stage3()
 

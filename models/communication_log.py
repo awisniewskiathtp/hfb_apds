@@ -77,6 +77,11 @@ class CommunicationLog(models.Model):
 	# ------------------------------------------------------------------
 	# Etap APDS (niezależny od bazowego 'state' - patrz docstring modułu)
 	# ------------------------------------------------------------------
+	apds_source_size_bytes = fields.Integer(
+		string="Rozmiar pliku źródłowego",
+		help="Rozmiar pliku źródłowego ustalony przed rozpoczęciem Etapu 1.",
+	)
+
 	apds_last_offset = fields.Integer(
 		string="Ostatni przetworzony offset (Etap 2)",
 		default=0,
@@ -235,12 +240,18 @@ class CommunicationLog(models.Model):
 					log.write({"state": "queued"})
 
 				if log.apds_stage == "download":
+					if not log._apds_check_resources("download"):
+						continue
 					log._apds_stage_download()
 
 				elif log.apds_stage == "prepare":
+					if not log._apds_check_resources("prepare"):
+						continue
 					log._apds_stage_prepare()
 
 				elif log.apds_stage == "process":
+					if not log._apds_check_resources("process"):
+						continue
 					log._apds_stage_process()
 
 			except Exception:
