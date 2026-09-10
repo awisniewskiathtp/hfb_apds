@@ -328,7 +328,8 @@ class CommunicationLogE3(models.Model):
 			"apds_records_error": errored,
 		})
 
-		self.message_post(body="Etap 3 (przetwarzanie) zakończony.")
+		#self.message_post(body="Etap 3 (przetwarzanie) zakończony.")
+		self._apds_generate_process_report()
 
 		# Blok F: sprzątanie stagingu ograniczone do tego przebiegu
 		self.env["apds.staging.line"].search([

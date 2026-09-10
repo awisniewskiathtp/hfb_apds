@@ -308,20 +308,243 @@ class CommunicationLog(models.Model):
 			load1 = load5 = load15 = None
 			_logger.warning("[APDS] Nie udało się odczytać getloadavg: %s", exc)
 
+		self.env.cr.execute("""
+			SELECT count(*)
+			FROM apds_staging_line
+			WHERE communication_log_id = %s
+			  AND state = 'draft'
+		""", (self.id,))
+		remaining = self.env.cr.fetchone()[0]
+
+		progress_text = f"pozostało: {remaining:,}".replace(",", " ")
+
 		if mem_total_gb is not None and disk_total_gb is not None and load1 is not None:
 			self.message_post(
-				body=Markup(f"""
-				<b>Stan serwera ({label})</b><br/>
-				RAM: {mem_used_gb:.1f} / {mem_total_gb:.1f} GB użyte (dostępne: {mem_available_gb:.1f} GB)<br/>
-				Dysk (/): {disk_used_gb:.1f} / {disk_total_gb:.1f} GB użyte (wolne: {disk_free_gb:.1f} GB)<br/>
-				Load average (1/5/15 min): {load1:.2f} / {load5:.2f} / {load15:.2f}
-				"""),
+				body=Markup(
+					f"<b>{label}</b> — "
+					f"RAM dostępny: {mem_available_gb:.1f} GB, "
+					f"dysk wolny: {disk_free_gb:.1f} GB, "
+					f"load: {load1:.2f} / {load5:.2f} / {load15:.2f}, "
+					f"{progress_text}."
+				),
 				message_type="notification",
 			)
 		else:
 			self.message_post(
-				body=Markup(f"<b>Stan serwera ({label})</b><br/>Błąd odczytu części statystyk - patrz log serwera."),
+				body=Markup(
+					f"<b>{label}</b> — "
+					f"{progress_text}, "
+					f"błąd odczytu części statystyk — patrz log serwera."
+				),
 				message_type="notification",
 			)
+
+	def _apds_generate_process_report(self):
+		"""Generuje końcowy raport przebiegu APDS w chatterze.
+
+		Raport korzysta z danych zapisanych w communication.log oraz
+		z pomiarów zasobów zapisanych wcześniej w chatterze.
+		"""
+
+		self.ensure_one()
+
+		# --------------------------------------------------------------
+		# Dane przebiegu
+		# --------------------------------------------------------------
+		total = self.apds_records_total or 0
+		processed = self.apds_records_processed or 0
+		skipped = self.apds_records_skipped or 0
+		errors = self.apds_records_error or 0
+		created = self.apds_records_created or 0
+		updated = self.apds_records_updated or 0
+
+		remaining = 0
+
+		# --------------------------------------------------------------
+		# Konfiguracja APDS
+		# --------------------------------------------------------------
+		config = self.provider_id._get_plugin_record()
+		batch_size = config.apds_batch_size if config else None
+
+		# --------------------------------------------------------------
+		# Analiza chattera - czasy i pomiary zasobów
+		# --------------------------------------------------------------
+		messages = self.env["mail.message"].search(
+			[
+				("model", "=", self._name),
+				("res_id", "=", self.id),
+			],
+			order="date asc, id asc",
+		)
+
+		stage3_start = None
+		stage3_end = None
+
+		ram_values = []
+		disk_values = []
+		load1_values = []
+		load5_values = []
+		load15_values = []
+
+		import re
+
+		for message in messages:
+			body = message.body or ""
+
+			# ----------------------------------------------------------
+			# Czas Etapu 3
+			# ----------------------------------------------------------
+			if "Etap 3 - start" in body and stage3_start is None:
+				stage3_start = message.date
+
+			if "Etap 3 - koniec (finalizacja)" in body:
+				stage3_end = message.date
+
+			# ----------------------------------------------------------
+			# Pomiary zasobów
+			# ----------------------------------------------------------
+			match = re.search(
+				r"RAM dostępny:\s*(\d+(?:[.,]\d+)?)\s*GB.*?"
+				r"dysk wolny:\s*(\d+(?:[.,]\d+)?)\s*GB.*?"
+				r"load:\s*(\d+(?:[.,]\d+)?)\s*/\s*"
+				r"(\d+(?:[.,]\d+)?)\s*/\s*"
+				r"(\d+(?:[.,]\d+)?)",
+				body,
+			)
+
+			if match:
+				def _float(value):
+					return float(value.replace(",", "."))
+
+				ram_values.append(_float(match.group(1)))
+				disk_values.append(_float(match.group(2)))
+				load1_values.append(_float(match.group(3)))
+				load5_values.append(_float(match.group(4)))
+				load15_values.append(_float(match.group(5)))
+
+		# --------------------------------------------------------------
+		# Czas Etapu 3
+		# --------------------------------------------------------------
+		duration_text = "brak danych"
+
+		if stage3_start and stage3_end:
+			duration = stage3_end - stage3_start
+			total_seconds = int(duration.total_seconds())
+
+			hours, remainder = divmod(total_seconds, 3600)
+			minutes, seconds = divmod(remainder, 60)
+
+			if hours:
+				duration_text = (
+					f"{hours} godz. {minutes} min {seconds} s"
+				)
+			elif minutes:
+				duration_text = f"{minutes} min {seconds} s"
+			else:
+				duration_text = f"{seconds} s"
+
+		# --------------------------------------------------------------
+		# Wydajność
+		# --------------------------------------------------------------
+		throughput_text = "brak danych"
+
+		if stage3_start and stage3_end and processed:
+			duration_seconds = (
+				stage3_end - stage3_start
+			).total_seconds()
+
+			if duration_seconds > 0:
+				throughput = processed / duration_seconds
+				throughput_text = (
+					f"{throughput:,.0f}".replace(",", " ")
+					+ " rekordów/s"
+				)
+
+		# --------------------------------------------------------------
+		# Zasoby
+		# --------------------------------------------------------------
+		def _range_text(values, unit=" GB"):
+			if not values:
+				return "brak danych"
+			minimum = min(values)
+			maximum = max(values)
+
+			if minimum == maximum:
+				return f"{minimum:.1f}{unit}".replace(".", ",")
+
+			return (
+				f"{maximum:.1f} → {minimum:.1f}{unit}"
+			).replace(".", ",")
+
+		ram_text = _range_text(ram_values)
+		disk_text = _range_text(disk_values)
+
+		load_text = "brak danych"
+
+		if load1_values:
+			load_text = (
+				f"{min(load1_values):.2f}–{max(load1_values):.2f} / "
+				f"{min(load5_values):.2f}–{max(load5_values):.2f} / "
+				f"{min(load15_values):.2f}–{max(load15_values):.2f}"
+			).replace(".", ",")
+
+		# --------------------------------------------------------------
+		# Raport
+		# --------------------------------------------------------------
+		body = f"""
+		<div>
+			<h3>Raport przebiegu APDS</h3>
+
+			<p>
+				<b>Przebieg:</b> communication.log #{self.id}<br/>
+				<b>Status:</b> zakończony
+			</p>
+
+			<h4>Etap 1 — pobranie</h4>
+			<p>
+				<b>Plik:</b> {escape(self.file_name or "-")}<br/>
+				<b>Rozmiar:</b> {self.apds_source_size_bytes:,.0f}
+				B
+			</p>
+
+			<h4>Etap 2 — przygotowanie</h4>
+			<p>
+				<b>Rekordów źródłowych:</b> {total:,}<br/>
+				<b>Przygotowanych:</b> {total - skipped - errors:,}<br/>
+				<b>Pominiętych:</b> {skipped:,}<br/>
+				<b>Błędnych:</b> {errors:,}
+			</p>
+
+			<h4>Etap 3 — przetwarzanie</h4>
+			<p>
+				<b>Przetworzono:</b> {processed:,}<br/>
+				<b>Utworzono produktów:</b> {created:,}<br/>
+				<b>Zaktualizowano produktów:</b> {updated:,}<br/>
+				<b>Błędy:</b> {errors:,}<br/>
+				<b>Pozostało:</b> {remaining:,}<br/>
+				<b>Batch:</b> {batch_size or "-"}<br/>
+				<b>Czas:</b> {duration_text}<br/>
+				<b>Średnia wydajność:</b> {throughput_text}
+			</p>
+
+			<h4>Zasoby podczas Etapu 3</h4>
+			<p>
+				<b>RAM dostępny:</b> {ram_text}<br/>
+				<b>Dysk wolny:</b> {disk_text}<br/>
+				<b>Load 1 / 5 / 15 min:</b> {load_text}
+			</p>
+
+			<h4>Wynik końcowy</h4>
+			<p>
+				<b>Synchronizacja zakończona.</b>
+			</p>
+		</div>
+		"""
+
+		self.message_post(
+			body=Markup(body),
+			message_type="notification",
+		)
+
 
 #EoF
