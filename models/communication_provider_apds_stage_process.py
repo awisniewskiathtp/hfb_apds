@@ -159,6 +159,9 @@ class CommunicationLogE3(models.Model):
 						product = Product.create(vals)
 						existing_by_code[line.default_code] = product
 						created += 1
+						# ToDo: 
+						# model stock.warehouse.orderpoint
+						#  add rec: default
 
 					self._apds_sync_flags_tags(product, line.flags)
 

@@ -55,6 +55,7 @@ def staging_line_to_product_vals(line):
 		"name": line.name,
 		"list_price": line.price_sell_netto,
 		"standard_price": line.price_buy_netto,
+		"is_storable": True, 
 	}
 
 #EoF
