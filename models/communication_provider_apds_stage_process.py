@@ -147,6 +147,12 @@ class CommunicationLogE3(models.Model):
 		for product in existing_products:
 			existing_by_code.setdefault(product.default_code, product)
 
+		warehouse = self.env["stock.warehouse"].search(
+			[("company_id", "=", self.env.company.id)], limit=1
+		)
+		created_variant_ids = []
+		updated_variant_ids = []
+
 		for line in lines:
 			try:
 				with self.env.cr.savepoint():
@@ -159,11 +165,10 @@ class CommunicationLogE3(models.Model):
 						product = Product.create(vals)
 						existing_by_code[line.default_code] = product
 						created += 1
-						# ToDo: 
-						# model stock.warehouse.orderpoint
-						#  add rec: default
+						created_variant_ids.append(product.product_variant_id.id)
 
 					self._apds_sync_flags_tags(product, line.flags)
+					self._apds_sync_category(product, line.category_name)
 
 					line.write({"state": "processed"})
 			except Exception as exc:
@@ -178,9 +183,55 @@ class CommunicationLogE3(models.Model):
 					self.id, line.id, exc,
 				)
 
+		if warehouse:
+			self._apds_ensure_orderpoints(
+				created_variant_ids, updated_variant_ids, warehouse
+			)
+
 		self.env.cr.commit()
 
 		return len(ids)
+
+	def _apds_ensure_orderpoints(self, created_variant_ids, updated_variant_ids, warehouse):
+		"""Zapewnia istnienie reguły ponownego zamawiania dla wariantów
+		przetworzonych w batchu (ustalenie 2026-09-17).
+
+		Optymalizacja bez schodzenia poniżej ORM: nowo utworzone produkty
+		z definicji nie mogą jeszcze mieć reguły, więc dla nich pomijamy
+		search i tworzymy wprost. search wykonujemy tylko dla wariantów
+		zaktualizowanych (write) - tylko one mogły istnieć wcześniej.
+
+		:param created_variant_ids: id product.product utworzonych w tym batchu
+		:param updated_variant_ids: id product.product zaktualizowanych w tym batchu
+		:param warehouse: stock.warehouse - magazyn domyślny firmy
+		"""
+		Orderpoint = self.env["stock.warehouse.orderpoint"]
+
+		to_create_ids = list(created_variant_ids)
+
+		if updated_variant_ids:
+			existing_ids = set(
+				Orderpoint.search([("product_id", "in", updated_variant_ids)])
+				.mapped("product_id.id")
+			)
+			to_create_ids += [
+				vid for vid in updated_variant_ids if vid not in existing_ids
+			]
+
+		if not to_create_ids:
+			return
+
+		Orderpoint.create([
+			{
+				"product_id": variant_id,
+				"location_id": warehouse.lot_stock_id.id,
+				"product_min_qty": 0,
+				"product_max_qty": 0,
+				"trigger": "auto",
+			}
+			for variant_id in to_create_ids
+		])
+
 
 	def _apds_reserve_batch_with_retry(self, batch_size, max_attempts=5):
 		"""Rezerwuje partię rekordów stagingowych przez
@@ -228,6 +279,35 @@ class CommunicationLogE3(models.Model):
 			f"zarezerwować partii po {max_attempts} próbach "
 			f"(SerializationFailure)."
 		)
+
+	def _apds_sync_category(self, product, category_name):
+		"""Synchronizuje categ_id na podstawie pola `category.name` z pliku
+		źródłowego ALIAS (ustalenie 2026-09-16).
+
+		Zasada:
+		- `category_name` niepuste  -> product.category o tej nazwie ma
+		  być ustawiona jako categ_id (find-or-create, analogicznie do
+		  tagów z flags - patrz _apds_sync_flags_tags)
+		- `category_name` puste/None -> categ_id produktu nie jest
+		  ruszane (brak danych źródłowych = brak działania)
+
+		Kategoria jest dopasowywana/tworzona po `name`, bez rozróżniania
+		wartości placeholder (np. "KATEGORIA GŁÓWNA") - traktowana jak
+		każda inna nazwa. Tworzona pod domyślnym rootem product.category,
+		bez dedykowanego węzła nadrzędnego (decyzja 2026-09-16).
+
+		:param product: rekord product.template (lub product.product)
+		:param category_name: str lub None/"" (apds.staging.line.category_name)
+		"""
+		if not category_name:
+			return
+
+		Category = self.env["product.category"]
+		categ = Category.search([("name", "=", category_name)], limit=1)
+		if not categ:
+			categ = Category.create({"name": category_name})
+
+		product.write({"categ_id": categ.id})
 
 
 	def _apds_sync_flags_tags(self, product, flags):

@@ -78,6 +78,7 @@ Nie jest przeznaczony do bezpośredniego użycia produkcyjnego.
     "depends": [
         "base",
         "product",
+		"stock",
         "hfb_xmlmap_exporter",
     ],
     "external_dependencies": {
