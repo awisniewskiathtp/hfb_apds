@@ -91,6 +91,7 @@ Nie jest przeznaczony do bezpośredniego użycia produkcyjnego.
         "views/communication_provider_views.xml",
         "views/communication_provider_apds_views.xml",
         "views/communication_provider_apds_menu.xml",
+        "views/product_template_views.xml",
     ],
     "installable": True,
     "application": False,

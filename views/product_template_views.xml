@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+#################################################################################
+#
+# Odoo, Open ERP Source Management Solution
+# Copyright (C) 2017-2026 Hadron for Business sp. z o.o. (http://hadronforbusiness.com)
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+#################################################################################
+# Dodaje pole apds_ean (EAN ze źródła ALIAS, bez walidacji unikalności)
+# na formularzu product.template, obok standardowego barcode - patrz
+# decyzja 2026-09-24 w models/apds_product_template.py.
+#################################################################################
+-->
+<odoo>
+
+	<record id="product_template_form_view_apds_ean" model="ir.ui.view">
+		<field name="name">product.template.form.apds.ean</field>
+		<field name="model">product.template</field>
+		<field name="inherit_id" ref="product.product_template_only_form_view"/>
+		<field name="arch" type="xml">
+			<xpath expr="//field[@name='barcode']" position="after">
+				<field name="apds_ean"/>
+			</xpath>
+		</field>
+	</record>
+
+</odoo>
