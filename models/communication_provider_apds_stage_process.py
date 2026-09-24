@@ -239,8 +239,8 @@ class CommunicationLogE3(models.Model):
 			try:
 				self.env.cr.execute(
 					"UPDATE communication_log SET "
-					"apds_records_created = apds_records_created + %s, "
-					"apds_records_updated = apds_records_updated + %s "
+					"apds_records_created = COALESCE(apds_records_created, 0) + %s, "
+					"apds_records_updated = COALESCE(apds_records_updated, 0) + %s "
 					"WHERE id = %s",
 					(created, updated, self.id),
 				)

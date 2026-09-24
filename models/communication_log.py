@@ -178,10 +178,12 @@ class CommunicationLog(models.Model):
 
 	apds_records_created = fields.Integer(
 		string="Produkty - utworzone",
+		default=0,
 	)
 
 	apds_records_updated = fields.Integer(
 		string="Produkty - zaktualizowane",
+		default=0,
 	)
 
 
@@ -264,6 +266,7 @@ class CommunicationLog(models.Model):
 						log.write({"state": "queued"})
 					except SerializationFailure:
 						self.env.cr.rollback()
+						self.env.invalidate_all()
 
 				if log.apds_stage == "download":
 					if not log._apds_check_resources("download"):
