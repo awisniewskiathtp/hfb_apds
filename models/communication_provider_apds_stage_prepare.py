@@ -208,6 +208,13 @@ class CommunicationLogE2(models.Model):
 			self.write({
 				"apds_stage": "process",
 				"apds_operation": "process",
+				# Ustawiane RAZ, tutaj - to jedyne miejsce chronione
+				# wyłącznością (_apds_try_acquire na wejściu do Etapu 2).
+				# Dzięki temu żaden z wielu równoległych workerów Etapu 3
+				# nie musi (i nie powinien) ponownie zapisywać tego samego
+				# stanu przy każdym batchu - patrz
+				# communication_provider_apds_stage_process.py.
+				"state": "queued",
 			})
 			self.env.cr.commit()
 

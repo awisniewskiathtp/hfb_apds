@@ -74,12 +74,17 @@ class CommunicationLogE3(models.Model):
 
 		self._apds_log_server_stats("Etap 3 - start")
 
-		self.env.cr.execute(
-			"UPDATE communication_log SET state = 'queued' "
-			"WHERE id = %s AND state NOT IN ('received', 'error', 'superseded')",
-			(self.id,),
-		)
-		self.env.cr.commit()
+		# state='queued' jest ustawiane RAZ, atomowo, przy przejściu
+		# Etap 2 -> Etap 3 (communication_provider_apds_stage_prepare.py,
+		# chronione wyłącznością _apds_try_acquire). Powtarzanie tego
+		# samego zapisu tutaj, przy KAŻDYM batchu i przez KAŻDEGO z wielu
+		# równoległych workerów, było potwierdzonym w logu (2026-09-24,
+		# log_id=17) źródłem SerializationFailure - dwa workery
+		# aktualizujące ten sam wiersz niemal jednocześnie, bez żadnej
+		# ochrony retry, w odróżnieniu od analogicznego ryzyka w
+		# _apds_reserve_batch_with_retry, gdzie retry jest zaimplementowane
+		# poprawnie. Usunięte całkowicie, nie tylko zabezpieczone retry -
+		# zapis nie niósł tu żadnej nowej informacji.
 
 		provider = self.provider_id
 		config = provider._get_plugin_record()
@@ -360,7 +365,7 @@ class CommunicationLogE3(models.Model):
 			)
 		})
 
-	def _apds_try_finalize_stage3(self):
+	def _apds_try_finalize_stage3(self, max_attempts=5):
 		"""Domyka Etap 3 - ale tylko RAZ, nawet jeśli kilku workerów
 		(Blok C) jednocześnie wyczerpie dostępne partie stagingu.
 
@@ -370,13 +375,38 @@ class CommunicationLogE3(models.Model):
 		pozostali, po zwolnieniu blokady, widzą już
 		apds_operation == 'completed' i kończą bez powtórnej
 		finalizacji.
+
+		Pod REPEATABLE READ oczekiwanie na FOR UPDATE zablokowany
+		przez inny, już zacommitowany worker kończy się
+		SerializationFailure zamiast cichym odczytem nowej wartości
+		(potwierdzone w logu 2026-09-24, log_id=17: kilku workerów
+		kończy ostatnie partie niemal jednocześnie). Ponowienie jest
+		tu bezpieczne - po nim worker zobaczy już
+		apds_operation == 'completed' i wyjdzie przez istniejącą
+		gałąź niżej, bez ryzyka podwójnej finalizacji.
 		"""
-		self.env.cr.execute(
-			"SELECT apds_operation FROM communication_log "
-			"WHERE id = %s FOR UPDATE",
-			(self.id,),
-		)
-		current_operation = self.env.cr.fetchone()[0]
+		for attempt in range(1, max_attempts + 1):
+			try:
+				self.env.cr.execute(
+					"SELECT apds_operation FROM communication_log "
+					"WHERE id = %s FOR UPDATE",
+					(self.id,),
+				)
+				current_operation = self.env.cr.fetchone()[0]
+				break
+			except SerializationFailure:
+				self.env.cr.rollback()
+				_logger.warning(
+					"[APDS] Etap 3 (log_id=%s): SerializationFailure przy "
+					"finalizacji, próba %s/%s - ponawiam",
+					self.id, attempt, max_attempts,
+				)
+				time.sleep(0.5 * attempt + random.uniform(0, 0.5))
+		else:
+			raise RuntimeError(
+				f"[APDS] Etap 3 (log_id={self.id}): nie udało się "
+				f"zablokować rekordu do finalizacji po {max_attempts} próbach."
+			)
 
 		if current_operation == "completed":
 			self.env.cr.commit()  # zwalnia blokadę

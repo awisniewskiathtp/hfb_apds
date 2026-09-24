@@ -69,6 +69,7 @@ from odoo import fields, models
 import logging
 import os
 from markupsafe import Markup, escape
+from psycopg2.errors import SerializationFailure
 _logger = logging.getLogger(__name__)
 
 class CommunicationLog(models.Model):
@@ -247,7 +248,22 @@ class CommunicationLog(models.Model):
 		for log in logs:
 			try:
 				if log.state != "queued":
-					log.write({"state": "queued"})
+					# Wielu workerów Etapu 3 (apds_stage == "process") może
+					# trafić tu jednocześnie dla tego samego log_id - w
+					# przeciwieństwie do Etapów 1/2, chronionych wyłącznością
+					# przez _apds_try_acquire, Etap 3 z założenia dopuszcza
+					# wielu równoległych workerów (patrz docstring
+					# _apds_stage_process). Zapis tego samego stanu przez
+					# kilku z nich naraz może więc kolidować pod
+					# REPEATABLE READ (SerializationFailure) - pole jest tu
+					# czysto informacyjne (rzeczywisty podział pracy
+					# zapewnia FOR UPDATE SKIP LOCKED na apds_staging_line),
+					# więc kolizję pomijamy zamiast ponawiać: ktoś inny
+					# i tak już ustawił lub zaraz ustawi tę samą wartość.
+					try:
+						log.write({"state": "queued"})
+					except SerializationFailure:
+						self.env.cr.rollback()
 
 				if log.apds_stage == "download":
 					if not log._apds_check_resources("download"):
