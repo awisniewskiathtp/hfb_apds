@@ -211,7 +211,58 @@ class CommunicationLogE3(models.Model):
 
 		self.env.cr.commit()
 
+		self._apds_increment_report_counters(created, updated)
+
 		return len(ids)
+
+	def _apds_increment_report_counters(self, created, updated, max_attempts=5):
+		"""Dolicza utworzone/zaktualizowane produkty z JEDNEGO batcha do
+		liczników raportu na communication.log (naprawa 2026-09-24:
+		wcześniej `created`/`updated` były wyłącznie lokalnymi zmiennymi
+		_apds_process_one_batch, tracone przy każdym powrocie z funkcji -
+		raport końcowy zawsze pokazywał 0/0, mimo że produkty faktycznie
+		powstawały/aktualizowały się poprawnie).
+
+		Inkrement wykonywany atomowym SQL (kolumna = kolumna + %s), nie
+		przez odczyt-modyfikuj-zapisz przez ORM - przy wielu równoległych
+		workerach batcha odczyt-modyfikuj-zapisz gubiłby część zliczeń
+		(lost update). Mimo atomowego SQL, dwa jednoczesne UPDATE tego
+		samego wiersza wciąż mogą kolidować pod REPEATABLE READ
+		(SerializationFailure) - ten sam wzorzec ryzyka co
+		_apds_reserve_batch_with_retry i _apds_try_finalize_stage3,
+		więc ten sam retry z rollback+invalidate.
+		"""
+		if not created and not updated:
+			return
+
+		for attempt in range(1, max_attempts + 1):
+			try:
+				self.env.cr.execute(
+					"UPDATE communication_log SET "
+					"apds_records_created = apds_records_created + %s, "
+					"apds_records_updated = apds_records_updated + %s "
+					"WHERE id = %s",
+					(created, updated, self.id),
+				)
+				self.env.cr.commit()
+				self.env.invalidate_all()
+				return
+			except SerializationFailure:
+				self.env.cr.rollback()
+				self.env.invalidate_all()
+				_logger.warning(
+					"[APDS] Etap 3 (log_id=%s): SerializationFailure przy "
+					"aktualizacji liczników utworzone/zaktualizowane, "
+					"próba %s/%s - ponawiam",
+					self.id, attempt, max_attempts,
+				)
+				time.sleep(0.5 * attempt + random.uniform(0, 0.5))
+
+		raise RuntimeError(
+			f"[APDS] Etap 3 (log_id={self.id}): nie udało się "
+			f"zaktualizować liczników utworzone/zaktualizowane po "
+			f"{max_attempts} próbach."
+		)
 
 	def _apds_ensure_orderpoints(self, created_variant_ids, updated_variant_ids, warehouse):
 		"""Zapewnia istnienie reguły ponownego zamawiania dla wariantów

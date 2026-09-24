@@ -31,36 +31,42 @@
 # property of the author.
 #################################################################################
 """
-Mapowanie apds.staging.line -> wartości product.template (Etap 3).
+Rozszerzenie product.template o pole EAN specyficzne dla APDS.
 
-STATUS: WERSJA TYMCZASOWA - Blok A (2026-09-02).
+DECYZJA (2026-09-24): APDS NIE zapisuje pola `ean` ze źródła ALIAS
+do standardowego `barcode` Odoo. Powód: potwierdzone w danych
+źródłowych (kwerenda na apds.staging.line, log_id=19) systemowe
+duplikaty EAN w pliku klienta - ten sam fizyczny produkt bywa
+wymieniony dwukrotnie, raz pod natywnym prefiksem producenta
+(np. "KYB", "HP"), raz pod prefiksem ALIAS "A-P" z kodem producenta
+zaszytym w indeksie (np. "A-P KYB KYB553379", "A-P HAN HP114 285).
+Skala: ~49 781 par duplikatów EAN na ~2,16 mln rekordów (~4,6%
+pliku) - zbyt duża, by traktować jako pomijalny szum.
 
-Zakres ograniczony do pól niewymagających dodatkowej logiki Odoo:
-default_code, name, list_price (z price_sell_netto), standard_price
-(z price_buy_netto). Pozostałe pola (taxes_id, categ_id, uom_id,
-tagi z flags_open, dostawca) celowo poza zakresem tej iteracji -
-wątpliwości co do ich docelowej obsługi patrz APDS_do_wyjasnienia.md.
+`barcode` w Odoo ma globalny unique constraint (product.product) -
+zapis drugiego z pary powodowałby stały, systemowy konflikt
+(ValidationError "Kody kreskowe zostały już przypisane"), niezależnie
+od kolejności przetwarzania. `apds_ean` jest zwykłym, NIE-unikalnym
+polem przechowującym wartość `ean` ze źródła 1:1 dla KAŻDEGO produktu
+APDS, bez walidacji kolizji - decyzja o docelowym mapowaniu EAN na
+`barcode` (np. po deduplikacji po stronie klienta, lub z regułą
+pierwszeństwa między prefiksami) pozostaje otwarta, patrz
+APDS_projekt.md sekcja 9.5.
 """
+from odoo import fields, models
 
 
-def staging_line_to_product_vals(line):
-	"""Buduje słownik wartości do create()/write() na product.template
-	na podstawie jednego rekordu apds.staging.line.
+class ProductTemplateApds(models.Model):
+	_inherit = "product.template"
 
-	UWAGA (2026-09-24): pole `ean` ze źródła ALIAS mapowane jest na
-	`apds_ean` (pole własne, bez walidacji unikalności), NIE na
-	standardowe `barcode` Odoo - patrz docstring apds_product_template.py.
-
-	:param line: rekord apds.staging.line (state == 'draft')
-	:return: dict gotowy do product.template.create()/write()
-	"""
-	return {
-		"default_code": line.default_code,
-		"name": line.name,
-		"list_price": line.price_sell_netto,
-		"standard_price": line.price_buy_netto,
-		"is_storable": True, 
-		"apds_ean": line.ean or False,
-	}
+	apds_ean = fields.Char(
+		string="EAN (ALIAS)",
+		index=True,
+		help="Kod EAN ze źródła ALIAS, zapisywany 1:1 bez walidacji "
+			 "unikalności (w odróżnieniu od `barcode`). Wprowadzone, "
+			 "bo plik źródłowy zawiera systemowe duplikaty EAN dla "
+			 "tego samego produktu pod różnymi prefiksami - patrz "
+			 "docstring modułu.",
+	)
 
 #EoF
