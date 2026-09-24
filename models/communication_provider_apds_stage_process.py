@@ -164,7 +164,23 @@ class CommunicationLogE3(models.Model):
 					vals = staging_line_to_product_vals(line)
 					product = existing_by_code.get(line.default_code)
 					if product:
-						product.write(vals)
+						# Zapisujemy tylko pola, które faktycznie się
+						# zmieniły. Odoo błędnie traktuje własny wariant
+						# (product.product) produktu jako "inny produkt"
+						# przy walidacji unikalności barcode (pole
+						# related na product.template) - zapis
+						# NIEZMIENIONEJ wartości barcode wciąż wyzwala tę
+						# walidację i fałszywie koliduje sam ze sobą.
+						# Przy ponownym imporcie tego samego pliku
+						# źródłowego (bez zmian w danych) dotyczyłoby to
+						# praktycznie każdego rekordu.
+						diff = {
+							field: value
+							for field, value in vals.items()
+							if product[field] != value
+						}
+						if diff:
+							product.write(diff)
 						updated += 1
 					else:
 						product = Product.create(vals)
@@ -270,6 +286,7 @@ class CommunicationLogE3(models.Model):
 				return [row[0] for row in self.env.cr.fetchall()]
 			except SerializationFailure:
 				self.env.cr.rollback()
+				self.env.invalidate_all()
 				_logger.warning(
 					"[APDS] Etap 3 (log_id=%s): SerializationFailure przy "
 					"rezerwacji partii, próba %s/%s - ponawiam",
@@ -396,6 +413,7 @@ class CommunicationLogE3(models.Model):
 				break
 			except SerializationFailure:
 				self.env.cr.rollback()
+				self.env.invalidate_all()
 				_logger.warning(
 					"[APDS] Etap 3 (log_id=%s): SerializationFailure przy "
 					"finalizacji, próba %s/%s - ponawiam",
