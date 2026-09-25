@@ -510,6 +510,8 @@ class CommunicationLogE3(models.Model):
 			"apds_records_error": errored,
 		})
 
+		self._apds_log_server_stats("Etap 3 - koniec (finalizacja)")
+
 		#self.message_post(body="Etap 3 (przetwarzanie) zakończony.")
 		self._apds_generate_process_report()
 
@@ -525,7 +527,6 @@ class CommunicationLogE3(models.Model):
 			"state": "received",
 		})
 
-		self._apds_log_server_stats("Etap 3 - koniec (finalizacja)")
 		self.env.cr.commit()
 
 #EoF
