@@ -39,6 +39,7 @@ from . import apds_field_mapping							# Mapowanie Etap 2
 from . import apds_product_sync								# Mapowanie apds.staging.line -> wartości product.template (Etap 3)
 from . import communication_provider_apds_resources			# Kontrola zasobów
 from . import apds_product_template							# EAN na product.template (bez walidacji uniki)
+from . import apds_product_barcode							# Wyłączenie walidacji duplikatu barcode produkt-produkt (decyzja po teście skanera, 2026-09)
 from . import communication_provider_apds_stage_download	# etat 1
 from . import communication_provider_apds_stage_prepare		# etap 2
 from . import communication_provider_apds_stage_process		# etap 3

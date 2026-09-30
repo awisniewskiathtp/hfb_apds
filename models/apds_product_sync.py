@@ -47,9 +47,14 @@ def staging_line_to_product_vals(line):
 	"""Buduje słownik wartości do create()/write() na product.template
 	na podstawie jednego rekordu apds.staging.line.
 
-	UWAGA (2026-09-24): pole `ean` ze źródła ALIAS mapowane jest na
-	`apds_ean` (pole własne, bez walidacji unikalności), NIE na
-	standardowe `barcode` Odoo - patrz docstring apds_product_template.py.
+	UWAGA (2026-09-24, zaktualizowane po decyzji z 2026-09-2x): pole
+	`ean` ze źródła ALIAS zapisywane jest RÓWNOLEGLE do dwóch pól:
+	- `apds_ean` (pole własne, bez walidacji unikalności) - stabilne
+	  pole techniczne/audytowe, niezależne od zachowania rdzenia Odoo;
+	- `barcode` (standardowe pole Odoo) - walidacja kolizji
+	  produkt-produkt dla tego pola jest CELOWO wyłączona, patrz
+	  apds_product_barcode.py, po teście skanera magazynowego, który
+	  potwierdził poprawny wybór produktu przy zdublowanym kodzie.
 
 	:param line: rekord apds.staging.line (state == 'draft')
 	:return: dict gotowy do product.template.create()/write()
@@ -61,6 +66,7 @@ def staging_line_to_product_vals(line):
 		"standard_price": line.price_buy_netto,
 		"is_storable": True, 
 		"apds_ean": line.ean or False,
+		"barcode": line.ean or False,
 	}
 
 #EoF
