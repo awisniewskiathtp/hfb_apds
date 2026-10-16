@@ -74,7 +74,7 @@ import json
 
 # Reguła może zostać zmieniona/uchylona po decyzji klienta -
 # stąd jako nazwana stała, nie zaszyta bezpośrednio w logice.
-SKIP_ON_ZERO_STOCK = True
+SKIP_ON_ZERO_STOCK = False
 
 
 class MappingResult(NamedTuple):
@@ -159,6 +159,23 @@ def map_alias_record_to_staging(record: dict) -> MappingResult:
 		# nagłówek pliku i APDS_projekt.md sekcja 9.6)
 		"flags": flags,
 	}
+	# Rekord ze znakiem NUL w mapowanym polu tekstowym -> error
+	# (patrz nagłówek, ustalenie 2026-10-16). data=None, żeby wartość
+	# z NUL nie trafiła do COPY; z tego samego powodu NUL jest usuwany
+	# z default_code w treści reason (trafia do error_message).
+	nul_fields = [
+		key for key, value in data.items()
+		if isinstance(value, str) and "\x00" in value
+	]
+	if nul_fields:
+		return MappingResult(
+			status="error",
+			data=None,
+			reason=(
+				f"Znak NUL (\\x00) w polu: {', '.join(nul_fields)} "
+				f"(default_code={default_code.replace(chr(0), '')!r})"
+			),
+		)
 	return MappingResult(status="ok", data=data, reason=None)
 
 import os
