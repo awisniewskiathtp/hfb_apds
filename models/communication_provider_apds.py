@@ -121,6 +121,14 @@ class CommunicationProviderAPDS(models.Model):
 			 "wszystkie rekordy z pliku, również ze stanem zerowym.",
 	)
 
+	apds_record_limit = fields.Integer(
+		string="Limit rekordów Etapu 2 (0 = bez limitu)",
+		default=0,
+		help="Przeznaczone do testów. Etap 2 kończy czytanie pliku "
+			 "źródłowego po osiągnięciu tej pozycji w pliku (liczonej od "
+			 "początku pliku, niezależnie od wznowienia). 0 = bez limitu.",
+	)
+
 	sftp_host = fields.Char(string="Host SFTP", required=True)
 	sftp_port = fields.Integer(string="Port SFTP", default=22)
 	sftp_username = fields.Char(string="Użytkownik SFTP")
@@ -154,6 +162,16 @@ class CommunicationProviderAPDS(models.Model):
 		help="Liczba rekordów stagingu przetwarzanych w jednej partii. "
 			 "Wartość domyślna jest parametrem roboczym; docelowa wartość "
 			 "wymaga testów wydajnościowych.",
+	)
+
+	apds_start_delay_minutes = fields.Integer(
+		string="Odstęp od zakończenia poprzedniego przebiegu (min)",
+		default=5,
+		required=True,
+		help="Etap 1 nowego przebiegu nie rozpocznie się wcześniej niż po "
+			 "tylu minutach od zakończenia Etapu 3 ostatniego przebiegu APDS "
+			 "(dowolnej konfiguracji) - write_date najnowszego logu APDS ze "
+			 "state='received'. Brak takiego logu = brak ograniczenia.",
 	)
 
 	# ------------------------------------------------------------------

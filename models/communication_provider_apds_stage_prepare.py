@@ -146,6 +146,8 @@ class CommunicationLogE2(models.Model):
 			filepath = resolve_source_filepath(config.local_staging_dir)
 			batch_size = config.apds_batch_size
 			skip_zero_stock = config.apds_skip_zero_stock
+			record_limit = config.apds_record_limit
+			limit_reached = False
 			_logger.info(
 				"[APDS] Etap 2 (log_id=%s): start, plik=%s, batch_size=%s, "
 				"wznowienie_od_offsetu=%s",
@@ -162,6 +164,9 @@ class CommunicationLogE2(models.Model):
 				records = ijson.items(f, "item")
 
 				for offset, record in enumerate(records):
+					if record_limit and offset >= record_limit:
+						limit_reached = True
+						break
 					if offset < self.apds_last_offset:
 						continue
 
@@ -188,15 +193,21 @@ class CommunicationLogE2(models.Model):
 			})
 			self.env.cr.commit()
 
+			limit_note = (
+				f" Przerwano na limicie {record_limit} rekordów."
+				if limit_reached else ""
+			)
+
 			_logger.info(
-				"[APDS] Etap 2 (log_id=%s): koniec. ok=%s skipped=%s error=%s",
+				"[APDS] Etap 2 (log_id=%s): koniec. ok=%s skipped=%s error=%s.%s",
 				self.id, counters["ok"], counters["skipped"], counters["error"],
+				limit_note,
 			)
 
 			self.message_post(body=(
 				f"Etap 2 (przygotowanie) zakończony: "
 				f"OK={counters['ok']}, pominięte={counters['skipped']}, "
-				f"błędy={counters['error']}."
+				f"błędy={counters['error']}.{limit_note}"
 			))
 
 			if config.apds_cleanup_source_file:

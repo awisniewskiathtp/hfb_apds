@@ -70,6 +70,7 @@ import logging
 import os
 from markupsafe import Markup, escape
 from psycopg2.errors import SerializationFailure
+from datetime import timedelta
 _logger = logging.getLogger(__name__)
 
 class CommunicationLog(models.Model):
@@ -269,6 +270,8 @@ class CommunicationLog(models.Model):
 						self.env.invalidate_all()
 
 				if log.apds_stage == "download":
+					if log._apds_start_delay_active():
+						continue
 					if not log._apds_check_resources("download"):
 						continue
 					log._apds_stage_download()
@@ -290,6 +293,33 @@ class CommunicationLog(models.Model):
 				)
 				raise
 
+
+	def _apds_start_delay_active(self):
+		"""Zwraca True, jeśli Etap 1 tego logu nie może jeszcze wystartować:
+		od zakończenia Etapu 3 ostatniego przebiegu APDS (write_date
+		najnowszego logu APDS ze state='received', dowolna konfiguracja)
+		nie minęło apds_start_delay_minutes z konfiguracji tego logu.
+		Brak takiego logu -> False. Log pozostaje w 'pending', sprawdzenie
+		powtarza kolejne wywołanie crona; bez wpisu w chatterze."""
+		self.ensure_one()
+		last = self.search([
+			("provider_id.provider_type", "=", "apds"),
+			("state", "=", "received"),
+			("id", "!=", self.id),
+		], order="write_date desc", limit=1)
+		if not last:
+			return False
+		config = self.provider_id._get_plugin_record()
+		delay = config.apds_start_delay_minutes if config else 0
+		start_after = last.write_date + timedelta(minutes=delay)
+		if fields.Datetime.now() < start_after:
+			_logger.info(
+				"[APDS] Etap 1 (log_id=%s): wstrzymany do %s "
+				"(zakończenie Etapu 3 log_id=%s: %s, odstęp %s min).",
+				self.id, start_after, last.id, last.write_date, delay,
+			)
+			return True
+		return False
 
 	def _apds_log_server_stats(self, label):
 		"""Zapisuje na chatter bieżący stan zasobów serwera (RAM, dysk,

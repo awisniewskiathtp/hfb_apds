@@ -29,9 +29,11 @@
 					</group>
 					<group string="Pliki źródłowe">
 						<field name="apds_batch_size"/>
+						<field name="apds_start_delay_minutes"/>
 						<field name="local_staging_dir"/>
 						<field name="apds_cleanup_source_file"/>
 						<field name="apds_skip_zero_stock"/>
+						<field name="apds_record_limit"/>
 					</group>
 				</sheet>
 			</form>
