@@ -74,7 +74,8 @@ import json
 
 # Reguła może zostać zmieniona/uchylona po decyzji klienta -
 # stąd jako nazwana stała, nie zaszyta bezpośrednio w logice.
-SKIP_ON_ZERO_STOCK = False
+# zdezaktualizowane na rzecz skip_zero_stock
+#SKIP_ON_ZERO_STOCK = False
 
 
 class MappingResult(NamedTuple):
@@ -83,7 +84,7 @@ class MappingResult(NamedTuple):
 	reason: Optional[str]   # wypełnione gdy status == "skipped" albo "error"
 
 
-def map_alias_record_to_staging(record: dict) -> MappingResult:
+def map_alias_record_to_staging(record: dict, skip_zero_stock: bool = False) -> MappingResult:
 	"""Mapuje JEDEN rekord źródłowy ALIAS (dict z JSON) na wynik
 	gotowy do zapisu w apds.staging.line albo na decyzję o pominięciu
 	lub odrzuceniu jako błędnego.
@@ -95,7 +96,7 @@ def map_alias_record_to_staging(record: dict) -> MappingResult:
 	stock = record.get("stock") or {}
 	stock_total = stock.get("total") or 0
 
-	if SKIP_ON_ZERO_STOCK and stock_total == 0:
+	if skip_zero_stock and stock_total == 0:
 		return MappingResult(status="skipped", data=None, reason="stock.total == 0")
 
 	prefix = record.get("prefix") or ""

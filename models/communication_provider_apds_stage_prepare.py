@@ -145,6 +145,7 @@ class CommunicationLogE2(models.Model):
 				)
 			filepath = resolve_source_filepath(config.local_staging_dir)
 			batch_size = config.apds_batch_size
+			skip_zero_stock = config.apds_skip_zero_stock
 			_logger.info(
 				"[APDS] Etap 2 (log_id=%s): start, plik=%s, batch_size=%s, "
 				"wznowienie_od_offsetu=%s",
@@ -164,7 +165,10 @@ class CommunicationLogE2(models.Model):
 					if offset < self.apds_last_offset:
 						continue
 
-					result = map_alias_record_to_staging(record)
+					result = map_alias_record_to_staging(
+						record, skip_zero_stock=skip_zero_stock,
+					)
+
 					counters[result.status] += 1
 
 					row = _row_from_mapping_result(self.id, uid, now, result)

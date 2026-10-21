@@ -112,6 +112,15 @@ class CommunicationProviderAPDS(models.Model):
 			 "niż jeden plik w katalogu).",
 	)
 
+	apds_skip_zero_stock = fields.Boolean(
+		string="Pomijaj rekordy z zerowym stanem",
+		default=False,
+		help="Jeśli zaznaczone, rekordy źródłowe ze stock.total == 0 "
+			 "są w Etapie 2 oznaczane jako pominięte i nie trafiają "
+			 "do synchronizacji. Jeśli odznaczone, importowane są "
+			 "wszystkie rekordy z pliku, również ze stanem zerowym.",
+	)
+
 	sftp_host = fields.Char(string="Host SFTP", required=True)
 	sftp_port = fields.Integer(string="Port SFTP", default=22)
 	sftp_username = fields.Char(string="Użytkownik SFTP")
