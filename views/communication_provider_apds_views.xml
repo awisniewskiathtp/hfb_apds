@@ -26,6 +26,13 @@
 						<group string="Kanał HTTP" invisible="apds_download_protocol != 'http'">
 							<field name="http_url"/>
 						</group>
+						<group string="Harmonogram">
+							<field name="apds_start_time" widget="float_time"/>
+							<field name="apds_tz"/>
+                        </group>
+                        <group string="Praca w dniach">
+							<field name="apds_weekday_ids" widget="many2many_checkboxes"/>
+						</group>
 					</group>
 					<group string="Pliki źródłowe">
 						<field name="apds_import_type"/>

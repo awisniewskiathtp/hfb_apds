@@ -3,3 +3,5 @@ access_communication_provider_apds_user,communication.provider.apds.user,model_c
 access_communication_provider_apds_manager,communication.provider.apds.manager,model_communication_provider_apds,base.group_system,1,1,1,1
 access_apds_staging_line_user,apds.staging.line.user,model_apds_staging_line,base.group_user,1,0,0,0
 access_apds_staging_line_manager,apds.staging.line.manager,model_apds_staging_line,base.group_system,1,1,1,1
+access_apds_weekday_user,apds.weekday.user,model_apds_weekday,base.group_user,1,0,0,0
+access_apds_weekday_manager,apds.weekday.manager,model_apds_weekday,base.group_system,1,1,1,1

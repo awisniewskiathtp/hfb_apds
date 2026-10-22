@@ -33,6 +33,7 @@
 
 from . import communication_provider						# integracja z XET Base
 from . import communication_log								# integracja z XET Base
+from . import apds_weekday									# słownik dni tygodnia (harmonogram)
 from . import communication_provider_apds					# orkiestrator
 from . import apds_staging_line								# tabela techniczna
 from . import apds_field_mapping							# Mapowanie Etap 2

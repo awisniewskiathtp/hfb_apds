@@ -58,9 +58,13 @@ ciała metod są zaślepkami (NotImplementedError) - żadna z nich nie została
 przetestowana na realnym połączeniu SFTP w kontekście tego modułu.
 """
 import logging
+from datetime import datetime, time
+
+import pytz
 
 from odoo import api, fields, models, _
 from odoo.exceptions import UserError
+from odoo.addons.base.models.res_partner import _tz_get
 
 _logger = logging.getLogger(__name__)
 import os
@@ -178,6 +182,41 @@ class CommunicationProviderAPDS(models.Model):
 			 "wymaga testów wydajnościowych.",
 	)
 
+	apds_start_time = fields.Float(
+		string="Godzina uruchomienia",
+		default=0.0,
+		required=True,
+		help="Używane, gdy provider ma trigger_type = 'cron_scheduled': "
+			 "_cron_apds_init tworzy przebieg raz dziennie, nie wcześniej niż "
+			 "o tej godzinie, w strefie czasowej konfiguracji. 00:00 to "
+			 "poprawna godzina (północ). Przy trigger_type = 'apds_streaming' "
+			 "pole nie jest brane pod uwagę.",
+	)
+
+	apds_weekday_ids = fields.Many2many(
+		"apds.weekday",
+		"apds_config_weekday_rel",
+		"config_id",
+		"weekday_id",
+		string="Dni uruchomienia",
+		default=lambda self: self.env["apds.weekday"].search([]),
+		help="Używane, gdy provider ma trigger_type = 'cron_scheduled': "
+			 "przebieg tworzony tylko w zaznaczone dni (w strefie czasowej "
+			 "konfiguracji). Brak zaznaczonych dni - brak przebiegu.",
+	)
+
+	apds_tz = fields.Selection(
+		_tz_get,
+		string="Strefa czasowa",
+		required=True,
+		compute="_compute_apds_tz",
+		store=True,
+		readonly=False,
+		help="Strefa czasowa godziny uruchomienia. Domyślnie strefa "
+			 "użytkownika, który utworzył konfigurację (Europe/Warsaw, gdy "
+			 "użytkownik nie ma strefy). Można zmienić ręcznie.",
+	)
+
 	apds_start_delay_minutes = fields.Integer(
 		string="Odstęp od zakończenia poprzedniego przebiegu (min)",
 		default=5,
@@ -268,12 +307,27 @@ class CommunicationProviderAPDS(models.Model):
 	# CRON — inicjowanie przebiegu APDS
 	# ------------------------------------------------------------------
 	@api.model
+	@api.depends("create_uid", "create_uid.tz")
+	def _compute_apds_tz(self):
+		"""Strefa użytkownika, który utworzył konfigurację (dla nowego,
+		jeszcze niezapisanego rekordu - bieżącego użytkownika);
+		Europe/Warsaw, gdy użytkownik nie ma strefy."""
+		for config in self:
+			user = config.create_uid or self.env.user
+			config.apds_tz = user.tz or "Europe/Warsaw"
+
 	def _cron_apds_init(self):
 		"""
-		Inicjuje nowy przebieg APDS.
+		Inicjuje nowy przebieg APDS dla każdej aktywnej konfiguracji
+		z aktywnym providerem. O utworzeniu przebiegu decyduje
+		trigger_type providera (communication.provider):
 
-		Cron uruchamiany raz dziennie tworzy rekord communication.log
-		rozpoczynający proces od operacji pobrania pliku.
+		- apds_streaming - przebieg tworzony bezwarunkowo, przy każdym
+		  wywołaniu crona;
+		- cron_scheduled - przebieg tworzony tylko, gdy
+		  _apds_start_time_reached() zwraca True (godzina apds_start_time
+		  w strefie apds_tz);
+		- pozostałe wartości - brak przebiegu.
 
 		Metoda nie wykonuje jeszcze żadnej operacji na danych źródłowych.
 		"""
@@ -302,6 +356,20 @@ class CommunicationProviderAPDS(models.Model):
 				)
 				continue
 
+			trigger = provider.trigger_type
+			if trigger == "apds_streaming":
+				pass
+			elif trigger == "cron_scheduled":
+				if not config._apds_start_time_reached(provider):
+					continue
+			else:
+				_logger.info(
+					"[APDS] Init: konfiguracja '%s' (id=%s) pominięta - "
+					"trigger_type providera id=%s = %s.",
+					config.display_name, config.id, provider.id, trigger,
+				)
+				continue
+
 			log = CommunicationLog.create({
 				"provider_id": provider.id,
 				"provider_type": "apds",
@@ -316,11 +384,89 @@ class CommunicationProviderAPDS(models.Model):
 
 			_logger.info(
 				"[APDS] Utworzono nowy przebieg: "
-				"log_id=%s, provider_id=%s, config_id=%s.",
+				"log_id=%s, provider_id=%s, config_id=%s, trigger_type=%s.",
 				log.id,
 				provider.id,
 				config.id,
+				trigger,
 			)
+
+		return True
+
+	def _apds_start_time_reached(self, provider):
+		"""trigger_type = cron_scheduled: czy można utworzyć przebieg.
+
+		True tylko, gdy:
+		- dzisiejszy dzień tygodnia (strefa apds_tz) jest w apds_weekday_ids,
+		- czas lokalny (strefa apds_tz) >= dzisiejsza godzina uruchomienia,
+		- provider nie ma logu APDS utworzonego od dzisiejszej godziny
+		  uruchomienia.
+		apds_start_time = 0.0 oznacza 00:00 (północ).
+		Każde pominięcie - _logger.info z powodem.
+		"""
+		self.ensure_one()
+
+		try:
+			tz = pytz.timezone(self.apds_tz or "Europe/Warsaw")
+		except pytz.UnknownTimeZoneError:
+			_logger.warning(
+				"[APDS] Init: konfiguracja '%s' (id=%s) pominięta - "
+				"nieznana strefa czasowa %s.",
+				self.display_name, self.id, self.apds_tz,
+			)
+			return False
+
+		now_utc = fields.Datetime.now()
+		now_local = pytz.utc.localize(now_utc).astimezone(tz)
+
+		days = self.apds_weekday_ids.mapped("number")
+		if now_local.weekday() not in days:
+			_logger.info(
+				"[APDS] Init: konfiguracja '%s' (id=%s) - dzień tygodnia %s "
+				"(%s) poza dniami uruchomienia %s.",
+				self.display_name, self.id, now_local.weekday(), tz.zone,
+				sorted(days),
+			)
+			return False
+		hours = int(self.apds_start_time)
+		minutes = int(round((self.apds_start_time - hours) * 60))
+		if minutes == 60:
+			hours, minutes = hours + 1, 0
+		if not 0 <= hours <= 23:
+			_logger.warning(
+				"[APDS] Init: konfiguracja '%s' (id=%s) pominięta - "
+				"niepoprawna godzina uruchomienia %s.",
+				self.display_name, self.id, self.apds_start_time,
+			)
+			return False
+
+		start_local = tz.localize(datetime.combine(
+			now_local.date(), time(hours, minutes),
+		))
+		if now_local < start_local:
+			_logger.info(
+				"[APDS] Init: konfiguracja '%s' (id=%s) - przed godziną "
+				"uruchomienia %s (%s).",
+				self.display_name, self.id,
+				start_local.strftime("%H:%M"), tz.zone,
+			)
+			return False
+
+		start_utc = start_local.astimezone(pytz.utc).replace(tzinfo=None)
+		Log = self.env["communication.log"]
+
+		today_log = Log.search([
+			("provider_id", "=", provider.id),
+			("provider_type", "=", "apds"),
+			("create_date", ">=", start_utc),
+		], limit=1)
+		if today_log:
+			_logger.info(
+				"[APDS] Init: konfiguracja '%s' (id=%s) - przebieg od "
+				"godziny uruchomienia już istnieje (log_id=%s).",
+				self.display_name, self.id, today_log.id,
+			)
+			return False
 
 		return True
 
