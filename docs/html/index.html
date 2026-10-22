@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="pl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Przegląd modułu – hfb_apds</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f3f6f5; --surface:#ffffff; --ink:#1d2a2f; --muted:#56676d; --line:#d3ddd9;
+  --accent:#1e6b52; --accent-soft:#e3f0ea; --link:#245b8f; --warn:#8a5a12; --warn-soft:#fbf1df;
+  --code:#eef2f1; --diagram:#ffffff; color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#11191c; --surface:#172126; --ink:#e2ebe8; --muted:#9db0aa; --line:#2b3a3f;
+    --accent:#62c49c; --accent-soft:#1c3129; --link:#8fbbe8; --warn:#e2b25e; --warn-soft:#2e2717;
+    --code:#1f2b30; --diagram:#f7f9f8; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#11191c; --surface:#172126; --ink:#e2ebe8; --muted:#9db0aa; --line:#2b3a3f;
+  --accent:#62c49c; --accent-soft:#1c3129; --link:#8fbbe8; --warn:#e2b25e; --warn-soft:#2e2717;
+  --code:#1f2b30; --diagram:#f7f9f8; color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{scroll-padding-top:16px}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:15px/1.6 "IBM Plex Sans","Segoe UI",system-ui,-apple-system,sans-serif}
+a{color:var(--link)}
+.layout{display:grid;grid-template-columns:260px minmax(0,1fr);min-height:100vh}
+nav.side{position:sticky;top:0;height:100vh;overflow:auto;padding:28px 20px;border-right:1px solid var(--line);background:var(--surface)}
+nav.side .mod{font:600 13px/1.3 "IBM Plex Mono",ui-monospace,monospace;color:var(--accent);word-break:break-all}
+nav.side .sub{font-size:13px;color:var(--muted);margin:4px 0 22px}
+nav.side ol{list-style:none;margin:0;padding:0;counter-reset:p}
+nav.side li{counter-increment:p}
+nav.side li a{display:flex;gap:10px;padding:7px 10px;border-radius:6px;text-decoration:none;color:var(--ink);font-size:14px}
+nav.side li a::before{content:counter(p);color:var(--muted);font:12px/1.9 "IBM Plex Mono",monospace;min-width:14px}
+nav.side li a:hover{background:var(--accent-soft)}
+nav.side li a[aria-current="page"]{background:var(--accent-soft);color:var(--accent);font-weight:600}
+nav.side .toc{margin-top:22px;padding-top:16px;border-top:1px solid var(--line);font-size:13px}
+nav.side .toc a{display:block;padding:3px 0;color:var(--muted);text-decoration:none}
+nav.side .toc a:hover{color:var(--ink)}
+main{padding:40px 48px 80px;max-width:1280px}
+header.page h1{font-size:30px;line-height:1.2;margin:0 0 8px;font-weight:600;letter-spacing:-.01em}
+header.page p.lead{margin:0 0 28px;color:var(--muted);max-width:75ch}
+h2{font-size:21px;margin:44px 0 10px;padding-top:12px;border-top:1px solid var(--line);font-weight:600}
+h3{font-size:16px;margin:28px 0 8px;font-weight:600}
+p,ul,ol{max-width:80ch}
+code,.mono{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.88em}
+code{background:var(--code);padding:1px 5px;border-radius:4px}
+.tablewrap{overflow-x:auto;margin:12px 0 18px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th,td{text-align:left;vertical-align:top;padding:7px 10px;border-bottom:1px solid var(--line)}
+th{background:var(--accent-soft);font-weight:600;white-space:nowrap}
+tr:last-child td{border-bottom:none}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+figure.dia{margin:14px 0 26px;border:1px solid var(--line);border-radius:8px;background:var(--surface);overflow:hidden}
+figure.dia .canvas{background:var(--diagram);overflow:auto;padding:18px;line-height:normal;font-size:16px;color:#1d2a2f}
+figure.dia .canvas svg{display:block;margin:0 auto;height:auto;max-width:100%}
+figure.dia.zoom .canvas svg{max-width:none}
+figure.dia figcaption{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:9px 14px;border-top:1px solid var(--line);font-size:13px;color:var(--muted)}
+figure.dia button{font:inherit;font-size:12.5px;padding:4px 10px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--ink);cursor:pointer}
+figure.dia button:focus-visible,nav a:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+details.src{margin:0;border-top:1px solid var(--line)}
+details.src summary{cursor:pointer;padding:8px 14px;font-size:12.5px;color:var(--muted)}
+details.src pre{margin:0;padding:12px 14px;background:var(--code);overflow:auto;font-size:12px;line-height:1.45}
+.note{border-left:3px solid var(--accent);background:var(--accent-soft);padding:10px 14px;border-radius:0 6px 6px 0;margin:14px 0;max-width:80ch}
+.note.warn{border-color:var(--warn);background:var(--warn-soft)}
+.kv{display:grid;grid-template-columns:max-content 1fr;gap:4px 18px;font-size:14px;max-width:80ch}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0}
+footer{margin-top:60px;color:var(--muted);font-size:12.5px;border-top:1px solid var(--line);padding-top:14px}
+@media (max-width:900px){
+  .layout{grid-template-columns:1fr}
+  nav.side{position:static;height:auto;border-right:none;border-bottom:1px solid var(--line)}
+  main{padding:28px 18px 60px}
+}
+@media print{nav.side{display:none}.layout{display:block}figure.dia{break-inside:avoid}}
+</style></head>
+<body><div class="layout">
+<nav class="side" aria-label="Dokumentacja">
+<div class="mod">hfb_apds</div><div class="sub">Odoo 19 – dokumentacja UML i BPMN</div>
+<ol><li><a href="index.html" aria-current="page">Przegląd modułu</a></li><li><a href="architektura.html">Architektura</a></li><li><a href="przypadki_uzycia.html">Przypadki użycia</a></li><li><a href="model_danych.html">Model danych</a></li><li><a href="stany.html">Stany</a></li><li><a href="sekwencje.html">Sekwencje</a></li><li><a href="procesy_bpmn.html">Procesy BPMN</a></li><li><a href="struktury_danych.html">Struktury danych źródłowych</a></li><li><a href="decyzje.html">Decyzje</a></li></ol><div class="toc"><a href="#cel">Przeznaczenie</a><a href="#dane">Dane modułu</a><a href="#konf">Konfiguracje</a><a href="#cron">Crony</a><a href="#wolumen">Wolumen</a><a href="#pliki">Pliki</a><a href="#spis">Spis</a></div>
+</nav>
+<main>
+<header class="page"><h1>Przegląd modułu</h1><p class="lead">Provider APDS dla XET Base: synchronizacja produktów i kodów dostawców z plików JSON ALIAS.</p></header>
+<h2 id="cel">Przeznaczenie</h2><p>Moduł realizuje proces ALIAS Product Data Synchronization (APDS) jako provider XET Base (<code>hfb_xmlmap_exporter</code>). Jeden rekord <code>communication.log</code> to jeden przebieg: Etap 1 pobranie pliku JSON, Etap 2 strumieniowe przygotowanie stagingu PostgreSQL, Etap 3 równoległe przetwarzanie partii przez workery cron, finalizacja z raportem.</p><p>Od wersji 19.0.0.3.16 konfiguracja providera ma pole <code>apds_import_type</code>:</p><div class="tablewrap"><table><thead><tr><th>Wartość</th><th>Plik źródłowy</th><th>Wynik w Odoo</th></tr></thead><tbody><tr><td><code>products</code></td><td>plik główny (np. <code>export_products_merged.json</code>)</td><td><code>product.template</code> / <code>product.product</code>: tworzenie i aktualizacja, kategoria, tagi z flag, orderpointy</td></tr><tr><td><code>supplier_ids</code></td><td>nowa struktura pliku ALIAS (np. <code>export_products.json</code>)</td><td><code>product.supplierinfo</code> (dostawca–kod produktu u dostawcy) oraz <code>res.partner</code> dla brakujących kodów dostawców; <code>product.template</code> bez zmian</td></tr></tbody></table></div><h2 id="dane">Dane modułu</h2><dl class="kv"><dt>Nazwa techniczna</dt><dd><code>hfb_apds</code></dd><dt>Wersja</dt><dd>19.0.0.3.16</dd><dt>Zależności</dt><dd><code>base</code>, <code>product</code>, <code>stock</code>, <code>hfb_xmlmap_exporter</code>; Python: <code>ijson</code></dd><dt>Licencja</dt><dd>AGPL-3</dd><dt>Status w manifeście</dt><dd>prototyp do testów i walidacji procesu</dd></dl><h2 id="konf">Konfiguracje na instancji odoo19</h2><p>Stan na 22.10.2026 (konektor MCP).</p><div class="tablewrap"><table><thead><tr><th>id</th><th>Nazwa</th><th>apds_import_type</th><th>Źródło</th><th>local_staging_dir</th><th>Limit Etapu 2</th><th>Batch</th><th>Odstęp startu</th></tr></thead><tbody><tr><td>1</td><td>stg-1</td><td><code>products</code></td><td>HTTP …/export_products_merged.json</td><td><code>/tmp/apds</code></td><td>50 000</td><td>6 000</td><td>5 min</td></tr><tr><td>2</td><td>kody_dostawcow</td><td><code>supplier_ids</code></td><td>HTTP …/SELLGUARD-NOWY-JSON/export_products.json</td><td><code>/tmp/apds_supplier</code></td><td>0 (bez limitu)</td><td>6 000</td><td>5 min</td></tr></tbody></table></div><p>Provider <code>communication.provider</code> id 1 (APDS) ma <code>provider_config_id</code> = 2. Konfiguracja bez przypiętego providera jest pomijana przez <code>_cron_apds_init</code>.</p><h2 id="cron">Harmonogram cronów</h2><div class="tablewrap"><table><thead><tr><th>XML id</th><th>Nazwa</th><th>Metoda</th><th>Interwał (XML)</th></tr></thead><tbody><tr><td><code>ir_cron_apds_init</code></td><td>APDS - inicjowanie przebiegu</td><td><code>_cron_apds_init</code></td><td>1 dzień</td></tr><tr><td><code>ir_cron_apds_process</code></td><td>APDS - przetwarzanie przebiegów (worker 1)</td><td><code>_cron_apds_process</code></td><td>1 minuta</td></tr><tr><td><code>ir_cron_apds_process_worker_2…5</code></td><td>worker 2…5</td><td><code>_cron_apds_process</code></td><td>1 minuta</td></tr></tbody></table></div><p>Plik <code>data/ir_cron.xml</code> ma <code>noupdate="1"</code>; rekordy mają w XML <code>active=False</code>. Aktualizacja modułu nie nadpisuje istniejących cronów.</p><h2 id="wolumen">Wolumen danych (przebiegi na odoo19)</h2><div class="tablewrap"><table><thead><tr><th>Log</th><th>Rodzaj</th><th class="num">Rekordy w pliku</th><th>Wynik</th></tr></thead><tbody><tr><td>#27 (19.10)</td><td>products, pełny plik</td><td class="num">2 210 285</td><td>utworzono 41 714, zaktualizowano 2 168 570, Etap 3 39 min 30 s (933 rek./s)</td></tr><tr><td>#34 (21.10)</td><td>supplier_ids, Etap 2 przed poprawką mapowania</td><td class="num">2 116 113</td><td>1 722 227 OK, 393 885 odrzuconych (pusta lista <code>[]</code>), 1 NUL</td></tr><tr><td>#35 (22.10)</td><td>supplier_ids, pełny plik</td><td class="num">2 116 113</td><td>Etap 2: 2 116 112 OK, 1 błąd (NUL), 15 partnerów utworzonych; Etap 3 w toku podczas sporządzania dokumentacji (ok. 490 wierszy/s)</td></tr></tbody></table></div><h2 id="pliki">Struktura plików modułu</h2><div class="tablewrap"><table><thead><tr><th>Plik</th><th>Zawartość</th></tr></thead><tbody><tr><td><code>models/communication_provider.py</code></td><td>rozszerzenie <code>communication.provider</code>: <code>provider_type = apds</code></td></tr><tr><td><code>models/communication_provider_apds.py</code></td><td>model konfiguracji, <code>_cron_apds_init</code></td></tr><tr><td><code>models/communication_log.py</code></td><td>pola przebiegu, <code>_apds_try_acquire</code>, dyspozytor <code>_cron_apds_process</code>, <code>_apds_start_delay_active</code>, raport</td></tr><tr><td><code>models/communication_provider_apds_stage_download.py</code></td><td>Etap 1 (HTTP / SFTP)</td></tr><tr><td><code>models/communication_provider_apds_stage_prepare.py</code></td><td>Etap 2, COPY do stagingu, <code>_apds_ensure_supplier_partners</code></td></tr><tr><td><code>models/communication_provider_apds_stage_process.py</code></td><td>Etap 3: rezerwacja partii, produkty, <code>supplier_ids</code>, finalizacja</td></tr><tr><td><code>models/communication_provider_apds_resources.py</code></td><td>kontrola zasobów (RAM, dysk, rozmiar pliku)</td></tr><tr><td><code>models/apds_field_mapping.py</code></td><td>mapowanie rekordu JSON na staging (dwie struktury), <code>resolve_source_filepath</code></td></tr><tr><td><code>models/apds_staging_line.py</code></td><td>model <code>apds.staging.line</code></td></tr><tr><td><code>models/apds_product_sync.py</code></td><td>wartości <code>product.template</code> z wiersza stagingu</td></tr><tr><td><code>models/apds_product_template.py</code></td><td>pole <code>apds_ean</code></td></tr><tr><td><code>models/apds_product_barcode.py</code></td><td>wyłączenie kontroli unikalności kodu kreskowego</td></tr><tr><td><code>data/ir_cron.xml</code></td><td>6 cronów, <code>noupdate="1"</code></td></tr><tr><td><code>docs/</code></td><td>dokumenty projektu: APDS_projekt.md, ALIAS_Struktura_danych_zrodlowych.md, specyfikacja i instrukcja wdrożeniowa</td></tr></tbody></table></div><h2 id="spis">Spis dokumentów</h2><ul><li><a href="architektura.html">Architektura</a></li><li><a href="przypadki_uzycia.html">Przypadki użycia</a></li><li><a href="model_danych.html">Model danych</a></li><li><a href="stany.html">Stany</a></li><li><a href="sekwencje.html">Sekwencje</a></li><li><a href="procesy_bpmn.html">Procesy BPMN</a></li><li><a href="struktury_danych.html">Struktury danych źródłowych</a></li><li><a href="decyzje.html">Decyzje</a></li></ul>
+<footer>Stan na 22.10.2026. Źródła: kod <code>hfb_apds</code> 19.0.0.3.16 (GitHub <code>492f87a</code>), dokumenty <code>docs/</code> repozytorium, dane instancji odoo19 odczytane przez konektor MCP (tylko odczyt).</footer>
+</main></div>
+<script>
+document.querySelectorAll('figure.dia button.zoom').forEach(b=>{
+  b.addEventListener('click',()=>{const f=b.closest('figure');const z=f.classList.toggle('zoom');
+    b.textContent=z?'Dopasuj do szerokości':'Rozmiar rzeczywisty';b.setAttribute('aria-pressed',z)});
+});
+</script>
+</body></html>

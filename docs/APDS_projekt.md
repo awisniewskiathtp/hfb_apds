@@ -395,6 +395,16 @@ Zakres informacji do ustalenia obejmuje m.in.:
 
 ---
 
+### UC-12 — Import kodów dostawców (nowa struktura pliku ALIAS)
+
+Dodano 2026-10-21. Plik w nowej strukturze (pole `supplier_ids`) jest przetwarzany okresowo, równolegle do pliku głównego, przez osobną konfigurację providera z `apds_import_type = supplier_ids`.
+
+- identyfikacja produktu jak w UC-06: `prefix + " " + index` = `default_code`; produkt nie jest tworzony ani zmieniany,
+- `supplier_ids` = `{kod dostawcy ALIAS: [kody produktu u dostawcy]}`; pusta lista `[]` = brak dostawców,
+- kod dostawcy ALIAS odpowiada `res.partner.ref`; brakujący partner jest tworzony automatycznie (`name` = `ref` = kod), dane uzupełnia klient,
+- każda para (partner, kod) to wiersz `product.supplierinfo`; synchronizacja pełna w obrębie partnerów występujących w rekordzie,
+- cel: powiązanie faktura KSeF ↔ produkt po kodzie dostawcy.
+
 ## 8. Mapowanie danych produktu
 
 Mapowanie oparte na pliku `Mapowanie pól z pliku JSON.ods`. Struktura źródłowa jest płaska, mapowana 1:1 na `product.template`.
@@ -521,6 +531,8 @@ Czy dopuszczamy sytuację, w której przebieg synchronizacji pełnej i przebieg 
 **Rozstrzygnięte przez ustalenie z klientem (patrz sekcja 3):** to jeden plik, jeden trigger, jeden proces — nie dwa niezależne harmonogramy. Nakładanie się przebiegów tego samego providera jest strukturalnie wykluczone, nie tylko założone jako mało prawdopodobne.
 
 **Rekomendacja z poprzedniej wersji tej sekcji pozostaje aktualna niezależnie od zamknięcia tego pytania:** dodanie własnego constraintu unikalności na `product.product.default_code` + rozszerzenie mechanizmu obsługi błędów rekordu o przypadek konfliktu (patrz `APDS_wczytanie_JSON_i_workery.md`, sekcja 10.3) ma niski koszt i chroni przed innymi, niezwiązanymi z tym pytaniem scenariuszami wyścigu (np. równoległe workery w obrębie *jednego* przebiegu, jeśli pre-pass deduplikacji zawiedzie). Do rozważenia niezależnie.
+
+> **Adnotacja 2026-10-21:** zamknięcie 9.8 dotyczyło jednego providera i jednego pliku. Druga konfiguracja (UC-12) korzysta z tej samej tabeli stagingowej, więc przebiegi znów mogą się nakładać. Ustalono, że przebiegi wzajemnie się wykluczają; egzekwuje to odstęp startu Etapu 1 (`apds_start_delay_minutes`) liczony od `write_date` najnowszego logu APDS ze `state = received`. Ograniczenia tej reguły: `DALSZE_PRACE.md`, ST-03.
 
 ### 9.9. Rozpoznawanie rodzaju zawartości pliku
 
@@ -672,6 +684,24 @@ Nowa zależność zewnętrzna modułu: `paramiko` (dopisana do
 `external_dependencies.python` w `__manifest__.py`, obok `ijson`).
 
 ---
+
+### 2026-10-21 — Nowa struktura pliku ALIAS: import kodów dostawców
+
+Ustalono:
+- nowy plik nie zastępuje obecnego (klient nie dostosuje od razu wszystkich systemów); przetwarzany okresowo, równolegle; potrzebne tylko `supplier_ids`,
+- wariant realizacji: dostosowanie obecnego kodu (mechanizm przetwarzania pozostaje), nie nowy plugin; pole konfiguracji `apds_import_type` (`products` / `supplier_ids`),
+- przebiegi obu konfiguracji wzajemnie się wykluczają; nowy Etap 1 startuje nie wcześniej niż `apds_start_delay_minutes` (domyślnie 5) po zakończeniu Etapu 3 ostatniego przebiegu (`write_date` logu ze `state = received`); brak takiego logu = brak ograniczenia,
+- `data/ir_cron.xml` z `noupdate="1"` – aktualizacja modułu nie nadpisuje cronów,
+- limit rekordów Etapu 2 na czas testów (`apds_record_limit`, pozycja w pliku, 0 = bez limitu),
+- konfiguracja `kody_dostawcow` ma osobny `local_staging_dir` (wymóg `resolve_source_filepath`: dokładnie jeden plik w katalogu),
+- zapis `supplier_ids`: partner po `res.partner.ref`, wiersz `product.supplierinfo` na parę partner–kod, synchronizacja pełna w obrębie partnerów z rekordu.
+
+### 2026-10-22 — Import kodów dostawców: korekty po teście pełnego pliku
+
+Ustalono:
+- `supplier_ids = []` (393 885 rekordów pełnego pliku, wszystkie listy puste) to rekord bez dostawców, nie błąd,
+- dla kodu dostawcy bez partnera wpis `res.partner` powstaje automatycznie (koniec Etapu 2); dane uzupełnia klient,
+- pełny plik: 2 116 113 rekordów, 15 kodów dostawców, 2 733 395 wystąpień kodów; wszystkie produkty z pliku istnieją w Odoo (stan 21.10.2026, odoo19).
 
 ## 12. Status dokumentu
 

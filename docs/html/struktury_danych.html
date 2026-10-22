@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="pl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Struktury danych źródłowych – hfb_apds</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f3f6f5; --surface:#ffffff; --ink:#1d2a2f; --muted:#56676d; --line:#d3ddd9;
+  --accent:#1e6b52; --accent-soft:#e3f0ea; --link:#245b8f; --warn:#8a5a12; --warn-soft:#fbf1df;
+  --code:#eef2f1; --diagram:#ffffff; color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#11191c; --surface:#172126; --ink:#e2ebe8; --muted:#9db0aa; --line:#2b3a3f;
+    --accent:#62c49c; --accent-soft:#1c3129; --link:#8fbbe8; --warn:#e2b25e; --warn-soft:#2e2717;
+    --code:#1f2b30; --diagram:#f7f9f8; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#11191c; --surface:#172126; --ink:#e2ebe8; --muted:#9db0aa; --line:#2b3a3f;
+  --accent:#62c49c; --accent-soft:#1c3129; --link:#8fbbe8; --warn:#e2b25e; --warn-soft:#2e2717;
+  --code:#1f2b30; --diagram:#f7f9f8; color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{scroll-padding-top:16px}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:15px/1.6 "IBM Plex Sans","Segoe UI",system-ui,-apple-system,sans-serif}
+a{color:var(--link)}
+.layout{display:grid;grid-template-columns:260px minmax(0,1fr);min-height:100vh}
+nav.side{position:sticky;top:0;height:100vh;overflow:auto;padding:28px 20px;border-right:1px solid var(--line);background:var(--surface)}
+nav.side .mod{font:600 13px/1.3 "IBM Plex Mono",ui-monospace,monospace;color:var(--accent);word-break:break-all}
+nav.side .sub{font-size:13px;color:var(--muted);margin:4px 0 22px}
+nav.side ol{list-style:none;margin:0;padding:0;counter-reset:p}
+nav.side li{counter-increment:p}
+nav.side li a{display:flex;gap:10px;padding:7px 10px;border-radius:6px;text-decoration:none;color:var(--ink);font-size:14px}
+nav.side li a::before{content:counter(p);color:var(--muted);font:12px/1.9 "IBM Plex Mono",monospace;min-width:14px}
+nav.side li a:hover{background:var(--accent-soft)}
+nav.side li a[aria-current="page"]{background:var(--accent-soft);color:var(--accent);font-weight:600}
+nav.side .toc{margin-top:22px;padding-top:16px;border-top:1px solid var(--line);font-size:13px}
+nav.side .toc a{display:block;padding:3px 0;color:var(--muted);text-decoration:none}
+nav.side .toc a:hover{color:var(--ink)}
+main{padding:40px 48px 80px;max-width:1280px}
+header.page h1{font-size:30px;line-height:1.2;margin:0 0 8px;font-weight:600;letter-spacing:-.01em}
+header.page p.lead{margin:0 0 28px;color:var(--muted);max-width:75ch}
+h2{font-size:21px;margin:44px 0 10px;padding-top:12px;border-top:1px solid var(--line);font-weight:600}
+h3{font-size:16px;margin:28px 0 8px;font-weight:600}
+p,ul,ol{max-width:80ch}
+code,.mono{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.88em}
+code{background:var(--code);padding:1px 5px;border-radius:4px}
+.tablewrap{overflow-x:auto;margin:12px 0 18px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th,td{text-align:left;vertical-align:top;padding:7px 10px;border-bottom:1px solid var(--line)}
+th{background:var(--accent-soft);font-weight:600;white-space:nowrap}
+tr:last-child td{border-bottom:none}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+figure.dia{margin:14px 0 26px;border:1px solid var(--line);border-radius:8px;background:var(--surface);overflow:hidden}
+figure.dia .canvas{background:var(--diagram);overflow:auto;padding:18px;line-height:normal;font-size:16px;color:#1d2a2f}
+figure.dia .canvas svg{display:block;margin:0 auto;height:auto;max-width:100%}
+figure.dia.zoom .canvas svg{max-width:none}
+figure.dia figcaption{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:9px 14px;border-top:1px solid var(--line);font-size:13px;color:var(--muted)}
+figure.dia button{font:inherit;font-size:12.5px;padding:4px 10px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--ink);cursor:pointer}
+figure.dia button:focus-visible,nav a:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+details.src{margin:0;border-top:1px solid var(--line)}
+details.src summary{cursor:pointer;padding:8px 14px;font-size:12.5px;color:var(--muted)}
+details.src pre{margin:0;padding:12px 14px;background:var(--code);overflow:auto;font-size:12px;line-height:1.45}
+.note{border-left:3px solid var(--accent);background:var(--accent-soft);padding:10px 14px;border-radius:0 6px 6px 0;margin:14px 0;max-width:80ch}
+.note.warn{border-color:var(--warn);background:var(--warn-soft)}
+.kv{display:grid;grid-template-columns:max-content 1fr;gap:4px 18px;font-size:14px;max-width:80ch}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0}
+footer{margin-top:60px;color:var(--muted);font-size:12.5px;border-top:1px solid var(--line);padding-top:14px}
+@media (max-width:900px){
+  .layout{grid-template-columns:1fr}
+  nav.side{position:static;height:auto;border-right:none;border-bottom:1px solid var(--line)}
+  main{padding:28px 18px 60px}
+}
+@media print{nav.side{display:none}.layout{display:block}figure.dia{break-inside:avoid}}
+</style></head>
+<body><div class="layout">
+<nav class="side" aria-label="Dokumentacja">
+<div class="mod">hfb_apds</div><div class="sub">Odoo 19 – dokumentacja UML i BPMN</div>
+<ol><li><a href="index.html">Przegląd modułu</a></li><li><a href="architektura.html">Architektura</a></li><li><a href="przypadki_uzycia.html">Przypadki użycia</a></li><li><a href="model_danych.html">Model danych</a></li><li><a href="stany.html">Stany</a></li><li><a href="sekwencje.html">Sekwencje</a></li><li><a href="procesy_bpmn.html">Procesy BPMN</a></li><li><a href="struktury_danych.html" aria-current="page">Struktury danych źródłowych</a></li><li><a href="decyzje.html">Decyzje</a></li></ol><div class="toc"><a href="#porown">Porównanie</a><a href="#supp">supplier_ids</a><a href="#kody">Kody dostawców</a><a href="#staging">Staging</a></div>
+</nav>
+<main>
+<header class="page"><h1>Struktury danych źródłowych</h1><p class="lead">Dwie struktury plików JSON ALIAS i ich mapowanie na staging.</p></header>
+<h2 id="porown">Porównanie struktur</h2><div class="tablewrap"><table><thead><tr><th>Plik główny (products)</th><th>Nowa struktura (supplier_ids)</th></tr></thead><tbody><tr><td><code>category</code> {id, name}</td><td><code>category</code> – liczba</td></tr><tr><td><code>price.buy / price.sell</code> {netto, brutto}</td><td><code>buy_price</code>, <code>sell_price</code> {netto, brutto}</td></tr><tr><td><code>price.srp</code></td><td><code>srp_price</code> (null w próbce)</td></tr><tr><td><code>price.profit</code></td><td><code>profit_price</code> {index, price {netto, brutto}}</td></tr><tr><td><code>flags</code> – obiekt boolean</td><td><code>flags</code> – tablica</td></tr><tr><td><code>attributes</code> – tablica</td><td><code>attributes</code> – null</td></tr><tr><td><code>compatibility[]</code></td><td><code>compat[]</code></td></tr><tr><td><code>conn</code> {repl, link}</td><td><code>connected</code> {link, repl}</td></tr><tr><td>—</td><td><code>stock_items[]</code></td></tr><tr><td>—</td><td><code>supplier_ids</code> – obiekt</td></tr></tbody></table></div><p>Pola bez zmian: <code>prefix</code>, <code>index</code>, <code>name</code>, <code>description</code>, <code>info</code>, <code>oe</code>, <code>ean</code>, <code>stock</code>, <code>tax</code>, <code>uom</code>, <code>discount_group</code>, <code>producer</code>, <code>supplier</code>, <code>supplier_id</code>, <code>pkwiu</code>, <code>cn</code>, <code>gtu</code>, <code>images</code>.</p><h2 id="supp">supplier_ids</h2><p>Klucz – kod dostawcy w systemie ALIAS; wartość – lista kodów produktu u dostawcy. Przykład z maila ALIAS: <code>{"AP-GD":["0588-GF FEBEST"],"JADAR":["0588-GF","0588-GFFEBEST"]}</code>.</p><div class="tablewrap"><table><thead><tr><th>Wartość w pliku</th><th>Obsługa w <code>map_alias_supplier_record_to_staging</code></th><th class="num">Pełny plik 21.10.2026</th></tr></thead><tbody><tr><td>obiekt</td><td>ok</td><td class="num">1 722 227</td></tr><tr><td>pusta lista <code>[]</code></td><td>ok, zapisane jako <code>{}</code></td><td class="num">393 885</td></tr><tr><td><code>null</code></td><td>ok, zapisane jako <code>{}</code></td><td class="num">0</td></tr><tr><td>inna wartość</td><td>error z zachowanym <code>default_code</code> i wartością w komunikacie</td><td class="num">0</td></tr></tbody></table></div><h2 id="kody">Kody dostawców w pełnym pliku</h2><p>Wiersze stagingu przebiegu #34, 21.10.2026 (liczba rekordów zawierających klucz).</p><div class="tablewrap"><table><thead><tr><th>Kod</th><th class="num">Rekordów</th></tr></thead><tbody><tr><td><code>MOTOGAMA</code></td><td class="num">1 338 897</td></tr><tr><td><code>AUTOPARTNER</code></td><td class="num">481 885</td></tr><tr><td><code>AP-GD</code></td><td class="num">323 034</td></tr><tr><td><code>JADAR</code></td><td class="num">240 687</td></tr><tr><td><code>ELIT</code></td><td class="num">111 485</td></tr><tr><td><code>HART</code></td><td class="num">81 268</td></tr><tr><td><code>MOTOROL</code></td><td class="num">37 073</td></tr><tr><td><code>VANKING</code></td><td class="num">33 945</td></tr><tr><td><code>SAROS</code></td><td class="num">22 237</td></tr><tr><td><code>ESEN</code></td><td class="num">21 395</td></tr><tr><td><code>TML</code></td><td class="num">16 401</td></tr><tr><td><code>ET</code></td><td class="num">8 394</td></tr><tr><td><code>EINPARTS</code></td><td class="num">6 024</td></tr><tr><td><code>WRC</code></td><td class="num">5 692</td></tr><tr><td><code>ABC</code></td><td class="num">4 978</td></tr></tbody></table></div><h2 id="staging">Mapowanie na staging</h2><div class="tablewrap"><table><thead><tr><th>Kolumna stagingu</th><th>products</th><th>supplier_ids</th></tr></thead><tbody><tr><td><code>prefix, index_code, default_code</code></td><td>prefix, index, prefix + " " + index</td><td>tak samo</td></tr><tr><td><code>supplier_ids</code></td><td>—</td><td>obiekt (Json)</td></tr><tr><td>pozostałe kolumny</td><td>z pól rekordu</td><td>puste</td></tr></tbody></table></div><p>Rekord z <code>\x00</code> w <code>default_code</code> – status error (ustalenie 16.10.2026). Pole <code>stock.total == 0</code> pomija rekord tylko dla <code>products</code> przy <code>apds_skip_zero_stock</code>.</p>
+<footer>Stan na 22.10.2026. Źródła: kod <code>hfb_apds</code> 19.0.0.3.16 (GitHub <code>492f87a</code>), dokumenty <code>docs/</code> repozytorium, dane instancji odoo19 odczytane przez konektor MCP (tylko odczyt).</footer>
+</main></div>
+<script>
+document.querySelectorAll('figure.dia button.zoom').forEach(b=>{
+  b.addEventListener('click',()=>{const f=b.closest('figure');const z=f.classList.toggle('zoom');
+    b.textContent=z?'Dopasuj do szerokości':'Rozmiar rzeczywisty';b.setAttribute('aria-pressed',z)});
+});
+</script>
+</body></html>

@@ -301,6 +301,38 @@
 
 </section>
 
+<section class="oe_container">
+    <div class="oe_row oe_spaced">
+        <div class="oe_span12">
+            <h3>Import kodów dostawców</h3>
+            <p>
+                Rodzaj importu wybierany w konfiguracji providera
+                (<code>apds_import_type</code>): <strong>Produkty</strong> – plik główny,
+                synchronizacja <code>product.template</code>;
+                <strong>Kody dostawców</strong> – nowa struktura pliku ALIAS, z której
+                brane jest pole <code>supplier_ids</code>.
+            </p>
+            <ul>
+                <li>kod dostawcy ALIAS odpowiada partnerowi o tym samym polu <code>ref</code>; brakujący partner jest tworzony automatycznie,</li>
+                <li>każda para dostawca – kod produktu to wiersz cennika dostawcy (<code>product.supplierinfo</code>), widoczny w zakładce „Zakup” produktu,</li>
+                <li>przebiegi kolejnych konfiguracji są rozdzielone konfigurowalnym odstępem od zakończenia poprzedniego przebiegu.</li>
+            </ul>
+        </div>
+    </div>
+</section>
+
+<section class="oe_container oe_dark">
+    <div class="oe_row oe_spaced">
+        <div class="oe_span12">
+            <h3>Dokumentacja</h3>
+            <p>
+                Dokumentacja UML i BPMN modułu:
+                <a href="/hfb_apds/static/description/doc/index.html" target="_blank">otwórz dokumentację</a>.
+            </p>
+        </div>
+    </div>
+</section>
+
 <section class="oe_container oe_separator"></section>
 
 <section class="oe_container">

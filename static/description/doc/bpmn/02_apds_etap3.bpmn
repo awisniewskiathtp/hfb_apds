@@ -1,0 +1,190 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Defs_APDS02" targetNamespace="http://hadron.eu.com/bpmn/hfb_transfer_order_febelco" exporter="Camunda Modeler" exporterVersion="5.28.0" modeler:executionPlatform="Camunda Platform" modeler:executionPlatformVersion="7.22.0">
+  <bpmn:collaboration id="Collab_APDS02" name="APDS - Etap 3">
+    <bpmn:participant id="Part_W" name="Odoo - Etap 3 (jedno wywołanie workera)" processRef="Process_APDS02">
+    </bpmn:participant>
+  </bpmn:collaboration>
+  <bpmn:process id="Process_APDS02" isExecutable="false">
+    <bpmn:startEvent id="Start" name="Wywołanie workera">
+      <bpmn:outgoing>Flow_Start_T_Res</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:serviceTask id="T_Res" name="Zarezerwuj partię (FOR UPDATE SKIP LOCKED)">
+      <bpmn:documentation>_apds_reserve_batch_with_retry</bpmn:documentation>
+      <bpmn:incoming>Flow_Start_T_Res</bpmn:incoming>
+      <bpmn:outgoing>Flow_T_Res_G_Empty</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="G_Empty" name="Partia pusta?" default="Flow_G_Empty_G_Type">
+      <bpmn:incoming>Flow_T_Res_G_Empty</bpmn:incoming>
+      <bpmn:outgoing>Flow_G_Empty_T_Fin0</bpmn:outgoing>
+      <bpmn:outgoing>Flow_G_Empty_G_Type</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="T_Fin0" name="Próba finalizacji">
+      <bpmn:documentation>_apds_try_finalize_stage3</bpmn:documentation>
+      <bpmn:incoming>Flow_G_Empty_T_Fin0</bpmn:incoming>
+      <bpmn:outgoing>Flow_T_Fin0_End0</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="End0" name="">
+      <bpmn:incoming>Flow_T_Fin0_End0</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:exclusiveGateway id="G_Type" name="apds_import_type?">
+      <bpmn:incoming>Flow_G_Empty_G_Type</bpmn:incoming>
+      <bpmn:outgoing>Flow_G_Type_T_P</bpmn:outgoing>
+      <bpmn:outgoing>Flow_G_Type_T_S1</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="T_P" name="Produkty: create / write, kategoria, tagi, orderpointy">
+      <bpmn:documentation>_apds_process_one_batch</bpmn:documentation>
+      <bpmn:incoming>Flow_G_Type_T_P</bpmn:incoming>
+      <bpmn:outgoing>Flow_T_P_G_Join</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="T_S1" name="Wyszukaj produkty, partnerów (ref), istniejące supplierinfo">
+      <bpmn:documentation>_apds_process_supplier_batch</bpmn:documentation>
+      <bpmn:incoming>Flow_G_Type_T_S1</bpmn:incoming>
+      <bpmn:outgoing>Flow_T_S1_T_S2</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="T_S2" name="Dla wiersza: create / unlink supplierinfo">
+      <bpmn:documentation>_apds_sync_supplier_ids</bpmn:documentation>
+      <bpmn:incoming>Flow_T_S1_T_S2</bpmn:incoming>
+      <bpmn:outgoing>Flow_T_S2_G_Join</bpmn:outgoing>
+      <bpmn:multiInstanceLoopCharacteristics isSequential="true" />
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="G_Join" name="">
+      <bpmn:incoming>Flow_T_P_G_Join</bpmn:incoming>
+      <bpmn:incoming>Flow_T_S2_G_Join</bpmn:incoming>
+      <bpmn:outgoing>Flow_G_Join_T_Commit</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="T_Commit" name="Commit, liczniki raportu">
+      <bpmn:documentation>_apds_increment_report_counters</bpmn:documentation>
+      <bpmn:incoming>Flow_G_Join_T_Commit</bpmn:incoming>
+      <bpmn:outgoing>Flow_T_Commit_T_Fin</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="T_Fin" name="Próba finalizacji">
+      <bpmn:documentation>_apds_try_finalize_stage3</bpmn:documentation>
+      <bpmn:incoming>Flow_T_Commit_T_Fin</bpmn:incoming>
+      <bpmn:outgoing>Flow_T_Fin_End</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="End" name="">
+      <bpmn:incoming>Flow_T_Fin_End</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_Start_T_Res" sourceRef="Start" targetRef="T_Res" />
+    <bpmn:sequenceFlow id="Flow_T_Res_G_Empty" sourceRef="T_Res" targetRef="G_Empty" />
+    <bpmn:sequenceFlow id="Flow_G_Empty_T_Fin0" name="tak" sourceRef="G_Empty" targetRef="T_Fin0" />
+    <bpmn:sequenceFlow id="Flow_G_Empty_G_Type" name="nie" sourceRef="G_Empty" targetRef="G_Type" />
+    <bpmn:sequenceFlow id="Flow_T_Fin0_End0" sourceRef="T_Fin0" targetRef="End0" />
+    <bpmn:sequenceFlow id="Flow_G_Type_T_P" name="products" sourceRef="G_Type" targetRef="T_P" />
+    <bpmn:sequenceFlow id="Flow_G_Type_T_S1" name="supplier_ids" sourceRef="G_Type" targetRef="T_S1" />
+    <bpmn:sequenceFlow id="Flow_T_S1_T_S2" sourceRef="T_S1" targetRef="T_S2" />
+    <bpmn:sequenceFlow id="Flow_T_P_G_Join" sourceRef="T_P" targetRef="G_Join" />
+    <bpmn:sequenceFlow id="Flow_T_S2_G_Join" sourceRef="T_S2" targetRef="G_Join" />
+    <bpmn:sequenceFlow id="Flow_G_Join_T_Commit" sourceRef="G_Join" targetRef="T_Commit" />
+    <bpmn:sequenceFlow id="Flow_T_Commit_T_Fin" sourceRef="T_Commit" targetRef="T_Fin" />
+    <bpmn:sequenceFlow id="Flow_T_Fin_End" sourceRef="T_Fin" targetRef="End" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_Collab_APDS02">
+    <bpmndi:BPMNPlane id="BPMNPlane_Collab_APDS02" bpmnElement="Collab_APDS02">
+      <bpmndi:BPMNShape id="Part_W_di" bpmnElement="Part_W" isHorizontal="true">
+        <dc:Bounds x="160" y="80" width="1480" height="520" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Start_di" bpmnElement="Start">
+        <dc:Bounds x="222" y="282" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="T_Res_di" bpmnElement="T_Res">
+        <dc:Bounds x="320" y="255" width="120" height="90" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="G_Empty_di" bpmnElement="G_Empty" isMarkerVisible="true">
+        <dc:Bounds x="495" y="275" width="50" height="50" />
+        <bpmndi:BPMNLabel><dc:Bounds x="480" y="255" width="80" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="T_Fin0_di" bpmnElement="T_Fin0">
+        <dc:Bounds x="460" y="415" width="120" height="90" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End0_di" bpmnElement="End0">
+        <dc:Bounds x="642" y="442" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="G_Type_di" bpmnElement="G_Type" isMarkerVisible="true">
+        <dc:Bounds x="635" y="275" width="50" height="50" />
+        <bpmndi:BPMNLabel><dc:Bounds x="675" y="305" width="110" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="T_P_di" bpmnElement="T_P">
+        <dc:Bounds x="760" y="135" width="120" height="90" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="T_S1_di" bpmnElement="T_S1">
+        <dc:Bounds x="760" y="375" width="120" height="90" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="T_S2_di" bpmnElement="T_S2">
+        <dc:Bounds x="920" y="375" width="120" height="90" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="G_Join_di" bpmnElement="G_Join" isMarkerVisible="true">
+        <dc:Bounds x="1095" y="275" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="T_Commit_di" bpmnElement="T_Commit">
+        <dc:Bounds x="1200" y="255" width="120" height="90" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="T_Fin_di" bpmnElement="T_Fin">
+        <dc:Bounds x="1340" y="255" width="120" height="90" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_di" bpmnElement="End">
+        <dc:Bounds x="1512" y="282" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_Start_T_Res_di" bpmnElement="Flow_Start_T_Res">
+        <di:waypoint x="258" y="300" />
+        <di:waypoint x="320" y="300" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_T_Res_G_Empty_di" bpmnElement="Flow_T_Res_G_Empty">
+        <di:waypoint x="440" y="300" />
+        <di:waypoint x="495" y="300" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_G_Empty_T_Fin0_di" bpmnElement="Flow_G_Empty_T_Fin0">
+        <di:waypoint x="520" y="325" />
+        <di:waypoint x="520" y="415" />
+        <bpmndi:BPMNLabel><dc:Bounds x="528" y="380" width="30" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_G_Empty_G_Type_di" bpmnElement="Flow_G_Empty_G_Type">
+        <di:waypoint x="545" y="300" />
+        <di:waypoint x="635" y="300" />
+        <bpmndi:BPMNLabel><dc:Bounds x="570" y="307" width="30" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_T_Fin0_End0_di" bpmnElement="Flow_T_Fin0_End0">
+        <di:waypoint x="580" y="460" />
+        <di:waypoint x="642" y="460" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_G_Type_T_P_di" bpmnElement="Flow_G_Type_T_P">
+        <di:waypoint x="660" y="275" />
+        <di:waypoint x="660" y="180" />
+        <di:waypoint x="760" y="180" />
+        <bpmndi:BPMNLabel><dc:Bounds x="668" y="160" width="60" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_G_Type_T_S1_di" bpmnElement="Flow_G_Type_T_S1">
+        <di:waypoint x="660" y="325" />
+        <di:waypoint x="660" y="420" />
+        <di:waypoint x="760" y="420" />
+        <bpmndi:BPMNLabel><dc:Bounds x="668" y="425" width="70" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_T_S1_T_S2_di" bpmnElement="Flow_T_S1_T_S2">
+        <di:waypoint x="880" y="420" />
+        <di:waypoint x="920" y="420" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_T_P_G_Join_di" bpmnElement="Flow_T_P_G_Join">
+        <di:waypoint x="880" y="180" />
+        <di:waypoint x="1120" y="180" />
+        <di:waypoint x="1120" y="275" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_T_S2_G_Join_di" bpmnElement="Flow_T_S2_G_Join">
+        <di:waypoint x="1040" y="420" />
+        <di:waypoint x="1120" y="420" />
+        <di:waypoint x="1120" y="325" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_G_Join_T_Commit_di" bpmnElement="Flow_G_Join_T_Commit">
+        <di:waypoint x="1145" y="300" />
+        <di:waypoint x="1200" y="300" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_T_Commit_T_Fin_di" bpmnElement="Flow_T_Commit_T_Fin">
+        <di:waypoint x="1320" y="300" />
+        <di:waypoint x="1340" y="300" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_T_Fin_End_di" bpmnElement="Flow_T_Fin_End">
+        <di:waypoint x="1460" y="300" />
+        <di:waypoint x="1512" y="300" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

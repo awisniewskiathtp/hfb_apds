@@ -128,3 +128,51 @@ Tabele w sekcji 3 stanowią wypełnienie przykładowe na bazie dotychczasowych u
 - powiązania każdego wiersza z odpowiednim UC w `APDS_projekt.md`, tam gdzie dotyczy to reguły procesowej, a nie tylko technicznego przypisania pola.
 
 Dokument powinien być aktualizowany równolegle z `APDS_projekt.md` — bez usuwania wcześniejszych ustaleń, jedynie z odnotowywaniem zmian statusu.
+
+---
+
+## Załącznik A. Nowa struktura pliku ALIAS — kody dostawców (2026-10-21)
+
+Plik `export_products.json` (instancja testowa: `…/SELLGUARD-NOWY-JSON/export_products.json`). Docelowo ma zastąpić plik główny; obecnie przetwarzany równolegle, tylko pole `supplier_ids` (`apds_import_type = supplier_ids`).
+
+Przykład rekordu (mail ALIAS):
+
+```json
+{"prefix":"FBT","index":"0588-GF","category":1408,"buy_price":{"netto":0,"brutto":0},
+ "sell_price":{"netto":0,"brutto":0},"srp_price":null,
+ "profit_price":{"index":null,"price":{"netto":null,"brutto":null}},
+ "flags":[],"attributes":null,"stock_items":[],
+ "supplier_ids":{"AP-GD":["0588-GF FEBEST"],"JADAR":["0588-GF","0588-GFFEBEST"]},
+ "compat":[],"connected":{"link":[],"repl":[]}, "...": "..."}
+```
+
+| Plik główny | Nowa struktura |
+|---|---|
+| `category` {id, name} | `category` – liczba |
+| `price.buy` / `price.sell` {netto, brutto} | `buy_price` / `sell_price` {netto, brutto} |
+| `price.srp` | `srp_price` |
+| `price.profit` {netto, brutto} | `profit_price` {index, price {netto, brutto}} |
+| `flags` – obiekt boolean | `flags` – tablica |
+| `attributes` – tablica | `attributes` – null |
+| `compatibility[]` | `compat[]` |
+| `conn` {repl, link} | `connected` {link, repl} |
+| — | `stock_items[]` |
+| — | `supplier_ids` |
+
+Bez zmian: `prefix`, `index`, `name`, `description`, `info`, `oe`, `ean`, `stock`, `tax`, `uom`, `discount_group`, `producer`, `supplier`, `supplier_id`, `pkwiu`, `cn`, `gtu`, `images`.
+
+### `supplier_ids`
+
+Klucz: kod dostawcy w systemie ALIAS. Wartość: lista kodów produktu u tego dostawcy (jeden dostawca może mieć kilka kodów).
+
+Pełny plik, 21.10.2026 (2 116 113 rekordów):
+
+| Wartość | Rekordów |
+|---|---:|
+| obiekt | 1 722 227 |
+| pusta lista `[]` (zamiast pustego obiektu) | 393 885 |
+
+Kody dostawców (liczba rekordów z kluczem): MOTOGAMA 1 338 897, AUTOPARTNER 481 885, AP-GD 323 034, JADAR 240 687, ELIT 111 485, HART 81 268, MOTOROL 37 073, VANKING 33 945, SAROS 22 237, ESEN 21 395, TML 16 401, ET 8 394, EINPARTS 6 024, WRC 5 692, ABC 4 978.
+
+Jeden rekord ma znak `\u0000` w polu tworzącym `default_code`.
+
