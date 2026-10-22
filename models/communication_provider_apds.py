@@ -112,6 +112,20 @@ class CommunicationProviderAPDS(models.Model):
 			 "niż jeden plik w katalogu).",
 	)
 
+	apds_import_type = fields.Selection(
+		[
+			("products", "Produkty (plik główny)"),
+			("supplier_ids", "Kody dostawców (supplier_ids)"),
+		],
+		string="Rodzaj importu",
+		default="products",
+		required=True,
+		help="products - obecny proces synchronizacji produktów. "
+			 "supplier_ids - nowa struktura pliku ALIAS: z rekordu brane są "
+			 "tylko prefix, index i supplier_ids; produkty są wyszukiwane po "
+			 "default_code, nie są tworzone ani modyfikowane w innych polach.",
+	)
+
 	apds_skip_zero_stock = fields.Boolean(
 		string="Pomijaj rekordy z zerowym stanem",
 		default=False,

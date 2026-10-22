@@ -42,7 +42,11 @@ import io
 import ijson
 import json
 
-from .apds_field_mapping import map_alias_record_to_staging, resolve_source_filepath
+from .apds_field_mapping import (
+	map_alias_record_to_staging,
+	map_alias_supplier_record_to_staging,
+	resolve_source_filepath,
+)
 
 STAGING_COLUMNS = [
 	"communication_log_id", "state",
@@ -55,6 +59,7 @@ STAGING_COLUMNS = [
 	"stock_local", "stock_supplier", "stock_total",
 	"category_id_src", "category_name",
 	"flags",
+	"supplier_ids",
 	"error_message",
 	"create_uid", "write_uid", "create_date", "write_date",
 ]
@@ -95,7 +100,7 @@ def _copy_batch_to_staging(cr, rows):
 		values = []
 		for col in STAGING_COLUMNS:
 			value = row[col]
-			if col == "flags" and value is not None:
+			if col in ("flags", "supplier_ids") and value is not None:
 				value = json.dumps(value)
 			values.append(value)
 		writer.writerow(values)
@@ -147,6 +152,7 @@ class CommunicationLogE2(models.Model):
 			batch_size = config.apds_batch_size
 			skip_zero_stock = config.apds_skip_zero_stock
 			record_limit = config.apds_record_limit
+			import_type = config.apds_import_type
 			limit_reached = False
 			_logger.info(
 				"[APDS] Etap 2 (log_id=%s): start, plik=%s, batch_size=%s, "
@@ -170,9 +176,12 @@ class CommunicationLogE2(models.Model):
 					if offset < self.apds_last_offset:
 						continue
 
-					result = map_alias_record_to_staging(
-						record, skip_zero_stock=skip_zero_stock,
-					)
+					if import_type == "supplier_ids":
+						result = map_alias_supplier_record_to_staging(record)
+					else:
+						result = map_alias_record_to_staging(
+							record, skip_zero_stock=skip_zero_stock,
+						)
 
 					counters[result.status] += 1
 
@@ -210,6 +219,9 @@ class CommunicationLogE2(models.Model):
 				f"błędy={counters['error']}.{limit_note}"
 			))
 
+			if import_type == "supplier_ids":
+				self._apds_ensure_supplier_partners()
+
 			if config.apds_cleanup_source_file:
 				os.remove(filepath)
 				_logger.info(
@@ -241,6 +253,64 @@ class CommunicationLogE2(models.Model):
 			self.env.cr.commit()
 			raise
 
+
+	def _apds_ensure_supplier_partners(self):
+		"""apds_import_type = supplier_ids: dla każdego kodu dostawcy ALIAS
+		występującego w stagingu tego przebiegu, który nie ma partnera
+		(res.partner.ref), tworzy partnera: name = ref = kod dostawcy.
+		Dane partnera uzupełnia klient.
+
+		Wykonywane w Etapie 2 - jedynym miejscu chronionym wyłącznością
+		(_apds_try_acquire), dzięki czemu równoległe workery Etapu 3 nie
+		tworzą duplikatów partnerów. Kody liczone z całego stagingu
+		przebiegu (SQL), więc wynik nie zależy od wznowienia Etapu 2.
+		"""
+		self.env.cr.execute(
+			"""
+			SELECT DISTINCT jsonb_object_keys(supplier_ids::jsonb)
+			FROM apds_staging_line
+			WHERE communication_log_id = %s
+			  AND state = 'draft'
+			  AND supplier_ids IS NOT NULL
+			""",
+			(self.id,),
+		)
+		codes = {row[0] for row in self.env.cr.fetchall() if row[0]}
+		if not codes:
+			return
+
+		Partner = self.env["res.partner"].with_context(
+			tracking_disable=True,
+			mail_create_nolog=True,
+			mail_create_nosubscribe=True,
+		)
+		existing = set(Partner.with_context(active_test=False).search(
+			[("ref", "in", list(codes))]
+		).mapped("ref"))
+		missing = sorted(codes - existing)
+		if not missing:
+			return
+
+		Partner.create([
+			{
+				"name": code,
+				"ref": code,
+				"is_company": True,
+				"supplier_rank": 1,
+			}
+			for code in missing
+		])
+		self.env.cr.commit()
+
+		_logger.info(
+			"[APDS] Etap 2 (log_id=%s): utworzono partnerów dla kodów "
+			"dostawców - %s: %s",
+			self.id, len(missing), ", ".join(missing),
+		)
+		self.message_post(body=(
+			f"Utworzono partnerów dla kodów dostawców ({len(missing)}): "
+			f"{', '.join(missing)}. Dane partnerów do uzupełnienia."
+		))
 
 	def _apds_flush_batch(self, batch):
 		"""Zapisuje jeden batch (lista (offset, row)) do stagingu

@@ -119,4 +119,8 @@ class APDSStagingLine(models.Model):
     # pozostałe do dodania razem z decyzją o docelowej liście tagów
     flags = fields.Json()
 
+    # supplier_ids (nowa struktura pliku ALIAS, apds_import_type =
+    # supplier_ids): {kod dostawcy ALIAS: [kody produktu u dostawcy]}
+    supplier_ids = fields.Json()
+
 #EoF

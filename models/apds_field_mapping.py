@@ -179,6 +179,67 @@ def map_alias_record_to_staging(record: dict, skip_zero_stock: bool = False) -> 
 		)
 	return MappingResult(status="ok", data=data, reason=None)
 
+
+def map_alias_supplier_record_to_staging(record: dict) -> MappingResult:
+	"""Mapuje JEDEN rekord nowej struktury pliku ALIAS
+	(apds_import_type = supplier_ids). Brane są wyłącznie prefix, index
+	i supplier_ids - pozostałe pola rekordu są ignorowane.
+
+	supplier_ids:
+	- obiekt -> ok;
+	- null albo pusta lista [] -> traktowane jak {} (rekord bez dostawców;
+	  pusta lista to sposób kodowania pustego obiektu w pliku ALIAS -
+	  potwierdzone na pełnym pliku 2026-10-21: 393 885 rekordów, wszystkie
+	  z pustą listą);
+	- inna wartość -> error, z zachowaną identyfikacją rekordu
+	  (prefix, index, default_code) i wartością w reason.
+	"""
+	prefix = record.get("prefix") or ""
+	index = record.get("index") or ""
+	default_code = f"{prefix} {index}".strip()
+
+	if not default_code:
+		return MappingResult(
+			status="error", data=None,
+			reason="Brak prefix i index - nie można ustalić default_code",
+		)
+	if "\x00" in default_code:
+		return MappingResult(
+			status="error", data=None,
+			reason=(
+				f"Znak NUL (\\x00) w polu: default_code "
+				f"(default_code={default_code.replace(chr(0), '')!r})"
+			),
+		)
+
+	supplier_ids = record.get("supplier_ids")
+	if supplier_ids is None or supplier_ids == []:
+		supplier_ids = {}
+	if not isinstance(supplier_ids, dict):
+		value = repr(supplier_ids).replace("\x00", "")
+		if len(value) > 500:
+			value = value[:500] + "…"
+		return MappingResult(
+			status="error",
+			data={
+				"prefix": prefix,
+				"index_code": index,
+				"default_code": default_code,
+			},
+			reason=(
+				f"supplier_ids nie jest obiektem: "
+				f"{type(supplier_ids).__name__} = {value}"
+			),
+		)
+
+	data = {
+		"prefix": prefix,
+		"index_code": index,
+		"default_code": default_code,
+		"supplier_ids": supplier_ids,
+	}
+	return MappingResult(status="ok", data=data, reason=None)
+
 import os
 
 def resolve_source_filepath(staging_dir: str) -> str:

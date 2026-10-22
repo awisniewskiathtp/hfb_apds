@@ -133,6 +133,11 @@ class CommunicationLogE3(models.Model):
 			return 0
 
 		lines = self.env["apds.staging.line"].browse(ids)
+
+		config = self.provider_id._get_plugin_record()
+		if config and config.apds_import_type == "supplier_ids":
+			return self._apds_process_supplier_batch(lines)
+
 		created = updated = errored = 0
 
 		Product = self.env["product.template"].with_context(
@@ -214,6 +219,155 @@ class CommunicationLogE3(models.Model):
 		self._apds_increment_report_counters(created, updated)
 
 		return len(ids)
+
+	def _apds_process_supplier_batch(self, lines):
+		"""Etap 3 dla apds_import_type = supplier_ids.
+
+		Produkt wyszukiwany po default_code (jak w procesie głównym).
+		Produkty NIE są tworzone ani modyfikowane w innych polach.
+		Brak produktu -> state = error. Zapis supplier_ids -
+		_apds_sync_supplier_ids.
+
+		Słownik kod dostawcy ALIAS -> res.partner (po polu ref) oraz
+		istniejące wiersze product.supplierinfo są budowane raz na batch.
+		"""
+		Product = self.env["product.template"].with_context(
+			tracking_disable=True,
+			mail_create_nolog=True,
+			mail_create_nosubscribe=True,
+			mail_notrack=True,
+		)
+		SupplierInfo = self.env["product.supplierinfo"].with_context(
+			tracking_disable=True,
+			mail_create_nolog=True,
+			mail_notrack=True,
+		)
+
+		codes = lines.mapped("default_code")
+		existing_by_code = {}
+		for product in Product.search([
+			("default_code", "in", codes),
+			("active", "=", True),
+		], order="id desc"):
+			existing_by_code.setdefault(product.default_code, product)
+
+		# Słownik kod dostawcy ALIAS -> partner (res.partner.ref)
+		alias_codes = set()
+		for line in lines:
+			if isinstance(line.supplier_ids, dict):
+				alias_codes.update(k for k in line.supplier_ids if k)
+		partners_by_ref = {}
+		if alias_codes:
+			for partner in self.env["res.partner"].search(
+				[("ref", "in", list(alias_codes))], order="id"
+			):
+				partners_by_ref.setdefault(partner.ref, partner)
+
+		# Istniejące wiersze supplierinfo: (product_tmpl_id, partner_id) -> rekordy
+		supplierinfo_by_key = {}
+		products = list(existing_by_code.values())
+		if products and partners_by_ref:
+			for info in SupplierInfo.search([
+				("product_tmpl_id", "in", [p.id for p in products]),
+				("partner_id", "in", [p.id for p in partners_by_ref.values()]),
+			]):
+				key = (info.product_tmpl_id.id, info.partner_id.id)
+				supplierinfo_by_key.setdefault(key, SupplierInfo.browse())
+				supplierinfo_by_key[key] |= info
+
+		unknown_codes = set()
+		updated = 0
+		for line in lines:
+			try:
+				with self.env.cr.savepoint():
+					product = existing_by_code.get(line.default_code)
+					if not product:
+						line.write({
+							"state": "error",
+							"error_message": (
+								f"Brak produktu default_code={line.default_code!r}"
+							),
+						})
+						continue
+					self._apds_sync_supplier_ids(
+						product, line.supplier_ids or {},
+						partners_by_ref, supplierinfo_by_key, unknown_codes,
+						SupplierInfo,
+					)
+					line.write({"state": "processed"})
+					updated += 1
+			except Exception as exc:
+				line.write({
+					"state": "error",
+					"error_message": str(exc),
+				})
+				_logger.warning(
+					"[APDS] Etap 3 supplier_ids (log_id=%s): staging_line id=%s "
+					"błąd: %s",
+					self.id, line.id, exc,
+				)
+
+		if unknown_codes:
+			_logger.info(
+				"[APDS] Etap 3 supplier_ids (log_id=%s): pominięto kody dostawców "
+				"bez partnera (res.partner.ref) - %s: %s",
+				self.id, len(unknown_codes), ", ".join(sorted(unknown_codes)),
+			)
+
+		self.env.cr.commit()
+		self._apds_increment_report_counters(0, updated)
+		return len(lines)
+
+	def _apds_sync_supplier_ids(self, product, supplier_ids, partners_by_ref,
+								supplierinfo_by_key, unknown_codes, SupplierInfo):
+		"""Zapis supplier_ids ({kod dostawcy ALIAS: [kody produktu u
+		dostawcy]}) do product.supplierinfo dla jednego product.template.
+
+		- kod dostawcy ALIAS -> res.partner po polu ref;
+		- jeden wiersz supplierinfo na parę (partner, product_code);
+		- synchronizacja pełna w obrębie partnerów występujących w
+		  rekordzie: brakujące kody dodawane, nadmiarowe usuwane; wiersze
+		  innych partnerów bez zmian;
+		- kod dostawcy bez partnera -> pominięty, dopisany do unknown_codes.
+		"""
+		if not isinstance(supplier_ids, dict):
+			raise ValueError(
+				f"supplier_ids nie jest obiektem: {type(supplier_ids).__name__}"
+			)
+
+		for alias_code, product_codes in supplier_ids.items():
+			partner = partners_by_ref.get(alias_code)
+			if not partner:
+				unknown_codes.add(alias_code)
+				continue
+
+			if isinstance(product_codes, str):
+				product_codes = [product_codes]
+			wanted = {c for c in (product_codes or []) if c}
+
+			key = (product.id, partner.id)
+			current = supplierinfo_by_key.get(key, SupplierInfo.browse())
+			current_codes = set(current.mapped("product_code"))
+
+			to_remove = current.filtered(
+				lambda r: r.product_code not in wanted
+			)
+			if to_remove:
+				to_remove.unlink()
+
+			to_add = sorted(wanted - current_codes)
+			created = SupplierInfo.browse()
+			if to_add:
+				created = SupplierInfo.create([
+					{
+						"partner_id": partner.id,
+						"product_tmpl_id": product.id,
+						"product_code": code,
+					}
+					for code in to_add
+				])
+
+			supplierinfo_by_key[key] = (current - to_remove) | created
 
 	def _apds_increment_report_counters(self, created, updated, max_attempts=5):
 		"""Dolicza utworzone/zaktualizowane produkty z JEDNEGO batcha do

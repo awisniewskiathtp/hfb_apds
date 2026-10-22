@@ -28,6 +28,7 @@
 						</group>
 					</group>
 					<group string="Pliki źródłowe">
+						<field name="apds_import_type"/>
 						<field name="apds_batch_size"/>
 						<field name="apds_start_delay_minutes"/>
 						<field name="local_staging_dir"/>
