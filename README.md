@@ -407,3 +407,4 @@ produkty Odoo
 
 
 Copyright 2017–2026 Hadron for business sp. z o.o.
+
