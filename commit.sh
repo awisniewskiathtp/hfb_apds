@@ -1,5 +1,6 @@
 #!/bin/sh
 # by warp3r(2017-202666666)
+#
 # czyszczenie Python Cache
 rm -rf `find . -name "__pycache__"`
 #
