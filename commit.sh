@@ -6,7 +6,7 @@
 rm -rf `find . -name "__pycache__"`
 #
 # nadanie uprawnien do zasobow uzytkoniwkowi odoo
-chown -R odoo:odoo .
+#chown -R odoo:odoo .
 #
 # poprawienie uprawnien do plikow i katalogow
 chmod 775 $(find . -type d)
